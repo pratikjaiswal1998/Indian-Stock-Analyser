@@ -1,0 +1,26 @@
+# Build artifacts
+build/
+dist/
+*.spec
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime cache
+industries_cache.json
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude
+.claude/
+
+# OS
+Thumbs.db
+.DS_Store
