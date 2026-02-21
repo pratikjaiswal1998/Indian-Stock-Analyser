@@ -17,6 +17,9 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.patches import FancyBboxPatch
+from matplotlib.ticker import MaxNLocator
+import mplfinance as mpf
 from yfinance.screener.query import EquityQuery, EQUITY_SCREENER_EQ_MAP
 
 import customtkinter as ctk
@@ -24,23 +27,51 @@ import customtkinter as ctk
 try:
     import mplcyberpunk
     HAS_CYBERPUNK = True
-    plt.style.use("cyberpunk")
 except Exception:
     HAS_CYBERPUNK = False
 
-# ── Neon Terminal Palette ─────────────────────────────────────
-DEEP_BG     = "#0a0e1a"
-PANEL_BG    = "#111827"
-CARD_BG     = "#1a1f3a"
-BORDER      = "#1e293b"
+# ── Theme System ──────────────────────────────────────────────
+DARK_THEME = {
+    "deep_bg":     "#0a0e1a",
+    "panel_bg":    "#111827",
+    "card_bg":     "#1a1f3a",
+    "border":      "#1e293b",
+    "text_bright": "#e2e8f0",
+    "text_dim":    "#64748b",
+    "text_muted":  "#475569",
+    "use_cyberpunk": True,
+    "ctk_mode":    "dark",
+    "candle_up":   "#00ff88",
+    "candle_down": "#ff3366",
+    "mpl_style":   "cyberpunk" if HAS_CYBERPUNK else "dark_background",
+}
+LIGHT_THEME = {
+    "deep_bg":     "#f0f2f5",
+    "panel_bg":    "#ffffff",
+    "card_bg":     "#e2e6eb",
+    "border":      "#c8cdd5",
+    "text_bright": "#1a1a2e",
+    "text_dim":    "#5a6270",
+    "text_muted":  "#8a92a0",
+    "use_cyberpunk": False,
+    "ctk_mode":    "light",
+    "candle_up":   "#16a34a",
+    "candle_down": "#dc2626",
+    "mpl_style":   "seaborn-v0_8-whitegrid",
+}
+
+_current_theme = DARK_THEME
+
+def T(key):
+    """Fetch a color from the active theme."""
+    return _current_theme[key]
+
+# ── Accent colours (theme-independent) ────────────────────────
 NEON_CYAN   = "#00f0ff"
 NEON_PINK   = "#ff006e"
 NEON_GREEN  = "#00ff88"
 NEON_AMBER  = "#ffaa00"
 NEON_RED    = "#ff3366"
-TEXT_BRIGHT = "#e2e8f0"
-TEXT_DIM    = "#64748b"
-TEXT_MUTED  = "#475569"
 GLOW_CYAN   = "#00f0ff"
 GLOW_GREEN  = "#00ff88"
 
@@ -53,10 +84,16 @@ CHART_COLORS = [
 # ── Paths ─────────────────────────────────────────────────────
 if getattr(sys, "frozen", False):
     _INITIAL_DIR = os.path.dirname(sys.executable)
+    _INTERNAL_DIR = os.path.join(_INITIAL_DIR, "_internal")
 else:
     _INITIAL_DIR = os.path.dirname(os.path.abspath(__file__))
+    _INTERNAL_DIR = _INITIAL_DIR
 
 _CACHE_FILE = os.path.join(_INITIAL_DIR, "industries_cache.json")
+_LM_DICT_FILE = os.path.join(_INTERNAL_DIR, "lm_dictionary.json")
+# Fallback: check next to exe if not in _internal
+if not os.path.exists(_LM_DICT_FILE):
+    _LM_DICT_FILE = os.path.join(_INITIAL_DIR, "lm_dictionary.json")
 _CACHE_MAX_AGE = 7 * 24 * 3600
 
 # ── Sort options ──────────────────────────────────────────────
@@ -133,9 +170,11 @@ SORT_EXPLANATIONS = {
 }
 
 # ── News Sentiment ────────────────────────────────────────────
-# Multi-word phrases are checked first (higher weight); single words use
-# regex word-boundary matching to avoid substring false positives like
-# "risk" matching inside "brisk" or "sell" inside "counsel".
+# Hybrid system: (1) Context-aware phrase matching  (2) Loughran-McDonald
+# financial dictionary (2,355 negative + 354 positive words from academic
+# finance research — specifically designed to avoid misclassifying words
+# like "profit", "capital", "risk", "tax", "liability" which are neutral
+# in financial context but negative in general dictionaries).
 
 BULLISH_PHRASES = [
     "revenue growth", "profit growth", "strong growth", "record profit",
@@ -153,6 +192,10 @@ BULLISH_PHRASES = [
 ]
 BEARISH_PHRASES = [
     "net loss", "revenue decline", "revenue miss", "profit decline",
+    "profit falls", "profit drops", "profit dropped", "profit fell",
+    "profit slumps", "profit plunges", "profit tumbles",
+    "share price drop", "shares drop", "shares fall", "shares fell",
+    "shares tumble", "shares plunge", "shares slide", "shares sink",
     "missed estimates", "missed expectations", "below expectations",
     "worse than expected", "weak results", "weak earnings",
     "weak demand", "market share loss", "order cancellation",
@@ -166,48 +209,58 @@ BEARISH_PHRASES = [
     "profit warning", "earnings miss", "layoff announced",
 ]
 
-# Single-word keywords (matched with word boundaries via regex)
-BULLISH_WORDS = [
-    "growth", "profit", "expansion", "acquisition", "partnership",
-    "dividend", "upgrade", "milestone", "innovation", "launch",
-    "beats", "surpass", "breakthrough", "bullish", "rally",
-    "buyback", "outperform", "recovery", "boost", "gains",
-    "soars", "surges", "jumps", "climbs", "rises",
-]
-BEARISH_WORDS = [
-    "loss", "losses", "debt", "downgrade", "restructuring",
-    "layoffs", "fraud", "penalty", "decline", "investigation",
-    "lawsuit", "default", "recall", "warning", "bearish",
-    "crash", "impairment", "underperform", "plunges", "tumbles",
-    "slumps", "plummets", "tanks", "sinks", "slides",
-]
+# Extra stock-market words NOT in Loughran-McDonald (it's an SEC filing
+# dictionary so it misses trading jargon like "bullish", "rally", "crash")
+_EXTRA_BULLISH = {
+    "bullish", "rally", "rallies", "rallied", "soars", "soared",
+    "surges", "surged", "jumps", "jumped", "climbs", "climbed",
+    "rises", "risen", "beats", "buyback", "outperform", "outperformed",
+    "upgrade", "upgraded", "milestone", "recovery", "boost", "boosted",
+}
+_EXTRA_BEARISH = {
+    "bearish", "crash", "crashed", "plunge", "plunged", "plunges",
+    "tumble", "tumbled", "tumbles", "slump", "slumped", "slumps",
+    "plummets", "plummeted", "tanks", "tanked", "sinks", "sank",
+    "slides", "slid", "falls", "fell", "fall", "drops", "dropped",
+    "drop", "underperform", "underperformed",
+}
 
-# Pre-compile word-boundary patterns for single words
-_BULL_WORD_PATTERNS = [(w, re.compile(r'\b' + re.escape(w) + r'\b', re.IGNORECASE))
-                       for w in BULLISH_WORDS]
-_BEAR_WORD_PATTERNS = [(w, re.compile(r'\b' + re.escape(w) + r'\b', re.IGNORECASE))
-                       for w in BEARISH_WORDS]
-
-# Negation phrases that flip sentiment of nearby keywords
 _NEGATION_PREFIXES = ["no ", "not ", "without ", "lack of ", "failed to ", "unable to "]
+
+# Load Loughran-McDonald dictionary (2,709 words total)
+_LM_POS_WORDS = set()
+_LM_NEG_WORDS = set()
+
+def _load_lm_dictionary():
+    """Load the Loughran-McDonald positive/negative word sets from JSON."""
+    global _LM_POS_WORDS, _LM_NEG_WORDS
+    try:
+        with open(_LM_DICT_FILE, "r") as f:
+            data = json.load(f)
+        _LM_POS_WORDS = set(data.get("positive", []))
+        _LM_NEG_WORDS = set(data.get("negative", []))
+    except Exception:
+        pass  # Falls back to empty — phrases still work
+
+_load_lm_dictionary()
+
+# Merge LM + extras into master sets
+_ALL_POS_WORDS = _LM_POS_WORDS | _EXTRA_BULLISH
+_ALL_NEG_WORDS = _LM_NEG_WORDS | _EXTRA_BEARISH
 
 
 def classify_sentiment(text):
-    """Classify text as bullish, bearish, or neutral using phrase + word matching."""
+    """Classify text using phrase matching + Loughran-McDonald dictionary."""
     if not text:
         return "neutral", []
-
     text_lower = text.lower()
 
-    bull_score = 0
-    bear_score = 0
-    bull_hits = []
-    bear_hits = []
+    bull_score, bear_score = 0, 0
+    bull_hits, bear_hits = [], []
 
-    # Phase 1: Multi-word phrases (weight = 2 each, more reliable)
+    # Phase 1: Multi-word phrases (weight=3, most reliable)
     for phrase in BULLISH_PHRASES:
         if phrase in text_lower:
-            # Check if negated
             negated = False
             idx = text_lower.find(phrase)
             before = text_lower[max(0, idx - 15):idx]
@@ -216,10 +269,10 @@ def classify_sentiment(text):
                     negated = True
                     break
             if negated:
-                bear_score += 2
+                bear_score += 3
                 bear_hits.append(f"not {phrase}")
             else:
-                bull_score += 2
+                bull_score += 3
                 bull_hits.append(phrase)
 
     for phrase in BEARISH_PHRASES:
@@ -232,26 +285,26 @@ def classify_sentiment(text):
                     negated = True
                     break
             if negated:
-                bull_score += 2
+                bull_score += 3
                 bull_hits.append(f"no {phrase}")
             else:
-                bear_score += 2
+                bear_score += 3
                 bear_hits.append(phrase)
 
-    # Phase 2: Single words with word-boundary regex (weight = 1 each)
-    for word, pattern in _BULL_WORD_PATTERNS:
-        if pattern.search(text):
+    # Phase 2: Loughran-McDonald + extras (weight=1 per word)
+    # Split on non-alpha to get individual words
+    words = re.findall(r'[a-z]+', text_lower)
+    for word in words:
+        if word in _ALL_POS_WORDS:
             bull_score += 1
-            if word not in bull_hits:
+            if word not in bull_hits and len(bull_hits) < 6:
                 bull_hits.append(word)
-
-    for word, pattern in _BEAR_WORD_PATTERNS:
-        if pattern.search(text):
+        elif word in _ALL_NEG_WORDS:
             bear_score += 1
-            if word not in bear_hits:
+            if word not in bear_hits and len(bear_hits) < 6:
                 bear_hits.append(word)
 
-    # Decide sentiment — require a meaningful gap to avoid coin-flip calls
+    # Decide — phrases already dominate due to higher weight
     diff = bull_score - bear_score
     if diff >= 2:
         return "bullish", bull_hits
@@ -264,8 +317,33 @@ def classify_sentiment(text):
     return "neutral", bull_hits + bear_hits if (bull_hits or bear_hits) else []
 
 
-def build_impact_note(sentiment, keywords, title):
-    """Build a short impact explanation from sentiment + matched keywords."""
+def build_impact_note(sentiment, keywords, title, financials=None):
+    """Build impact note with optional financial numbers."""
+    fin_line = ""
+    if financials:
+        parts = []
+        rev = financials.get("revenue_cr")
+        rev_g = financials.get("revenue_growth")
+        pat = financials.get("net_profit_cr")
+        pat_g = financials.get("profit_growth")
+        if rev is not None:
+            parts.append(f"Revenue: \u20b9{rev:,.0f} Cr" +
+                         (f" ({rev_g:+.1f}% YoY)" if rev_g is not None else ""))
+        if pat is not None:
+            parts.append(f"Net Profit: \u20b9{pat:,.0f} Cr" +
+                         (f" ({pat_g:+.1f}% YoY)" if pat_g is not None else ""))
+        pe = financials.get("pe")
+        if pe:
+            parts.append(f"P/E: {pe:.1f}")
+        mcap = financials.get("mcap_cr")
+        if mcap:
+            if mcap >= 1e5:
+                parts.append(f"MCap: \u20b9{mcap/1e5:.2f} L Cr")
+            else:
+                parts.append(f"MCap: \u20b9{mcap:,.0f} Cr")
+        if parts:
+            fin_line = "\n\n\U0001F4CA Key Financials: " + "  |  ".join(parts)
+
     if sentiment == "bullish":
         if keywords:
             triggers = ", ".join(kw.title() for kw in keywords[:4])
@@ -275,8 +353,9 @@ def build_impact_note(sentiment, keywords, title):
                 f"Such developments typically indicate business growth, "
                 f"improved financials, or market confidence \u2014 which can "
                 f"support the stock's long-term trajectory."
+                f"{fin_line}"
             )
-        return "This news has a positive tone that could support investor confidence."
+        return "This news has a positive tone that could support investor confidence." + fin_line
     elif sentiment == "bearish":
         if keywords:
             triggers = ", ".join(kw.title() for kw in keywords[:4])
@@ -286,8 +365,9 @@ def build_impact_note(sentiment, keywords, title):
                 f"These factors may indicate operational challenges, "
                 f"financial stress, or governance issues \u2014 which could "
                 f"put downward pressure on the stock."
+                f"{fin_line}"
             )
-        return "This news has a negative tone that warrants caution for investors."
+        return "This news has a negative tone that warrants caution for investors." + fin_line
     else:
         if keywords:
             mixed = ", ".join(kw.title() for kw in keywords[:4])
@@ -295,16 +375,17 @@ def build_impact_note(sentiment, keywords, title):
                 f"This news contains mixed signals ({mixed}) and does not "
                 f"clearly lean positive or negative. The impact on the stock "
                 f"is ambiguous \u2014 monitor for follow-up developments."
+                f"{fin_line}"
             )
         return (
             "This news is neutral and does not strongly indicate "
             "either positive or negative impact on the stock. "
             "Monitor for follow-up developments."
+            + fin_line
         )
 
 
 def fetch_google_news(stock_name, count=10):
-    """Fetch news from Google News RSS for a given stock name."""
     query = urllib.parse.quote(f"{stock_name} NSE stock")
     url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -318,7 +399,6 @@ def fetch_google_news(stock_name, count=10):
             title = item.find("title").text if item.find("title") is not None else ""
             source = item.find("source").text if item.find("source") is not None else "Unknown"
             pub_date = item.find("pubDate").text if item.find("pubDate") is not None else ""
-            # Parse date
             date_short = ""
             if pub_date:
                 try:
@@ -327,10 +407,7 @@ def fetch_google_news(stock_name, count=10):
                 except Exception:
                     date_short = pub_date[:16] if len(pub_date) >= 16 else pub_date
             results.append({
-                "title": title,
-                "summary": "",  # Google RSS doesn't give clean summaries
-                "source": source,
-                "date": date_short,
+                "title": title, "summary": "", "source": source, "date": date_short,
             })
         return results
     except Exception:
@@ -338,7 +415,6 @@ def fetch_google_news(stock_name, count=10):
 
 
 def fmt_inr(value):
-    """Format a number as \u20b9 in Cr (crore) or \u20b9 in L Cr (lakh crore)."""
     if value is None or value == 0:
         return "N/A"
     cr = value / 1e7
@@ -389,11 +465,12 @@ def build_industry_map():
 class StockPicker(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self._dark_mode = True
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
 
         self.title("Stock Picker \u2014 NSE Industry Screener")
-        self.configure(fg_color=DEEP_BG)
+        self.configure(fg_color=T("deep_bg"))
         self.minsize(1400, 920)
 
         # State
@@ -417,6 +494,22 @@ class StockPicker(ctk.CTk):
         self._news_items = []
         self._news_panel_visible = False
 
+        # Chart state
+        self._candle_period = "1y"
+        self._current_symbol = None
+        self._candle_hist = None
+
+        # Stored axes/canvas for in-place redraws (avoids flash)
+        self._left_fig = None
+        self._left_canvas = None
+        self._left_gs = None
+        self._candle_ax = None
+        self._rev_ax = None
+        self._div_ax = None
+
+        # Last analyze args (for re-rendering on theme switch)
+        self._last_analyze_args = None
+
         self._build_ui()
         self._center_window()
         self._load_industries()
@@ -429,22 +522,73 @@ class StockPicker(ctk.CTk):
         self.geometry(f"{w}x{h}+{x}+{y}")
 
     # ══════════════════════════════════════════════════════════
+    #  THEME TOGGLE
+    # ══════════════════════════════════════════════════════════
+
+    def _toggle_theme(self):
+        global _current_theme
+        self._dark_mode = not self._dark_mode
+        _current_theme = DARK_THEME if self._dark_mode else LIGHT_THEME
+
+        ctk.set_appearance_mode(T("ctk_mode"))
+        self.configure(fg_color=T("deep_bg"))
+
+        if HAS_CYBERPUNK and T("use_cyberpunk"):
+            plt.style.use("cyberpunk")
+        else:
+            plt.style.use("default")
+
+        # Save state before rebuild
+        sector = self._sector_var.get() if hasattr(self, '_sector_var') else ""
+        industry = self._industry_var.get() if hasattr(self, '_industry_var') else ""
+        stock = self._stock_var.get() if hasattr(self, '_stock_var') else ""
+        sort_val = self._sort_var.get() if hasattr(self, '_sort_var') else SORT_OPTIONS[0]
+
+        # Destroy and rebuild
+        self._news_panel_visible = False
+        self._master_frame.destroy()
+        self._build_ui()
+
+        # Restore state
+        if sector and sector in self._industry_map:
+            self._sector_var.set(sector)
+            self._on_sector_change(sector)
+        if industry:
+            self._industry_var.set(industry)
+        if self._stock_details:
+            self._apply_sort()
+            if stock:
+                # Find the stock in new labels
+                for lbl, sym in self._names_to_symbols.items():
+                    old_sym = None
+                    # try to match
+                    if sym == self._names_to_symbols.get(stock):
+                        self._stock_var.set(lbl)
+                        break
+            self._go_btn.configure(state="normal")
+        self._sort_var.set(sort_val)
+        self._update_explanation()
+
+        # Re-render charts if we had analyze data
+        if self._last_analyze_args is not None:
+            args = self._last_analyze_args
+            self._show_news_panel()
+            self._render_charts(*args)
+
+    # ══════════════════════════════════════════════════════════
     #  BUILD UI
     # ══════════════════════════════════════════════════════════
 
     def _build_ui(self):
-        # ── Master layout: left content + right news panel ────
-        self._master_frame = ctk.CTkFrame(self, fg_color=DEEP_BG, corner_radius=0)
+        self._master_frame = ctk.CTkFrame(self, fg_color=T("deep_bg"), corner_radius=0)
         self._master_frame.pack(fill="both", expand=True)
 
-        # News panel (right side) — created first so it packs on the right
-        # before left_frame claims all remaining space. Hidden initially.
+        # News panel (right side) — created first
         self._news_frame = ctk.CTkFrame(
-            self._master_frame, fg_color=PANEL_BG, corner_radius=0,
-            width=320, border_width=1, border_color=BORDER)
-        # Don't pack yet — shown on analyze
+            self._master_frame, fg_color=T("panel_bg"), corner_radius=0,
+            width=320, border_width=1, border_color=T("border"))
 
-        self._left_frame = ctk.CTkFrame(self._master_frame, fg_color=DEEP_BG, corner_radius=0)
+        self._left_frame = ctk.CTkFrame(self._master_frame, fg_color=T("deep_bg"), corner_radius=0)
         self._left_frame.pack(side="left", fill="both", expand=True)
 
         self._build_left_panel()
@@ -454,10 +598,10 @@ class StockPicker(ctk.CTk):
         parent = self._left_frame
 
         # ── Header ────────────────────────────────────────────
-        header = ctk.CTkFrame(parent, fg_color=DEEP_BG, corner_radius=0)
+        header = ctk.CTkFrame(parent, fg_color=T("deep_bg"), corner_radius=0)
         header.pack(fill="x", padx=24, pady=(18, 0))
 
-        title_frame = ctk.CTkFrame(header, fg_color=DEEP_BG, corner_radius=0)
+        title_frame = ctk.CTkFrame(header, fg_color=T("deep_bg"), corner_radius=0)
         title_frame.pack(side="left")
 
         ctk.CTkLabel(
@@ -469,48 +613,81 @@ class StockPicker(ctk.CTk):
         ctk.CTkLabel(
             title_frame, text="\u2500\u2500\u2500",
             font=ctk.CTkFont("Consolas", 14),
-            text_color=TEXT_MUTED
+            text_color=T("text_muted")
         ).pack(side="left", padx=(12, 12))
 
         ctk.CTkLabel(
             title_frame, text="NSE Industry Screener",
             font=ctk.CTkFont("Segoe UI", 11),
-            text_color=TEXT_DIM
+            text_color=T("text_dim")
         ).pack(side="left", pady=(3, 0))
 
+        # ── Theme toggle (right side of header) ─────────────
+        toggle_frame = ctk.CTkFrame(header, fg_color=T("deep_bg"), corner_radius=0)
+        toggle_frame.pack(side="right")
+
+        self._theme_label = ctk.CTkLabel(
+            toggle_frame,
+            text="\u263E" if self._dark_mode else "\u2600",
+            font=ctk.CTkFont("Segoe UI", 16),
+            text_color=NEON_AMBER if not self._dark_mode else NEON_CYAN
+        )
+        self._theme_label.pack(side="left", padx=(0, 6))
+
+        self._theme_switch = ctk.CTkSwitch(
+            toggle_frame, text="",
+            onvalue=True, offvalue=False,
+            width=42, height=22,
+            switch_width=38, switch_height=18,
+            fg_color=T("card_bg"), progress_color=NEON_CYAN,
+            button_color=T("text_bright"), button_hover_color=NEON_CYAN,
+            command=self._toggle_theme)
+        if self._dark_mode:
+            self._theme_switch.select()
+        else:
+            self._theme_switch.deselect()
+        self._theme_switch.pack(side="left")
+
+        ctk.CTkLabel(
+            toggle_frame,
+            text="Dark" if self._dark_mode else "Light",
+            font=ctk.CTkFont("Segoe UI", 9),
+            text_color=T("text_dim")
+        ).pack(side="left", padx=(6, 0))
+
         # ── Row 1: Sector / Industry / Load ───────────────────
-        row1 = ctk.CTkFrame(parent, fg_color=DEEP_BG, corner_radius=0)
+        row1 = ctk.CTkFrame(parent, fg_color=T("deep_bg"), corner_radius=0)
         row1.pack(fill="x", padx=24, pady=(14, 0))
 
         ctk.CTkLabel(
             row1, text="Sector:", font=ctk.CTkFont("Segoe UI", 10),
-            text_color=TEXT_DIM
+            text_color=T("text_dim")
         ).pack(side="left")
 
         self._sector_var = ctk.StringVar()
         self._sector_combo = ctk.CTkComboBox(
             row1, variable=self._sector_var, state="readonly",
             width=220, font=ctk.CTkFont("Segoe UI", 10),
-            fg_color=CARD_BG, border_color=BORDER,
+            fg_color=T("card_bg"), border_color=T("border"),
             button_color=NEON_CYAN, button_hover_color=GLOW_CYAN,
-            dropdown_fg_color=PANEL_BG, dropdown_hover_color=CARD_BG,
-            dropdown_text_color=TEXT_BRIGHT, text_color=TEXT_BRIGHT,
+            dropdown_fg_color=T("panel_bg"), dropdown_hover_color=T("card_bg"),
+            dropdown_text_color=T("text_bright"), text_color=T("text_bright"),
             corner_radius=8, command=self._on_sector_change)
         self._sector_combo.pack(side="left", padx=(6, 18))
 
         ctk.CTkLabel(
             row1, text="Industry:", font=ctk.CTkFont("Segoe UI", 10),
-            text_color=TEXT_DIM
+            text_color=T("text_dim")
         ).pack(side="left")
 
         self._industry_var = ctk.StringVar()
         self._industry_combo = ctk.CTkComboBox(
             row1, variable=self._industry_var, state="readonly",
             width=300, font=ctk.CTkFont("Segoe UI", 10),
-            fg_color=CARD_BG, border_color=BORDER,
+            fg_color=T("card_bg"), border_color=T("border"),
             button_color=NEON_CYAN, button_hover_color=GLOW_CYAN,
-            dropdown_fg_color=PANEL_BG, dropdown_hover_color=CARD_BG,
-            dropdown_text_color=TEXT_BRIGHT, text_color=TEXT_BRIGHT,
+            dropdown_fg_color=T("panel_bg"), dropdown_hover_color=T("card_bg"),
+            dropdown_text_color=T("text_bright"), text_color=T("text_bright"),
             corner_radius=8)
         self._industry_combo.pack(side="left", padx=(6, 18))
 
@@ -518,28 +695,28 @@ class StockPicker(ctk.CTk):
             row1, text="\u25B6  Load Stocks",
             font=ctk.CTkFont("Segoe UI", 11, "bold"),
             fg_color=NEON_CYAN, hover_color="#00c8d4",
-            text_color=DEEP_BG, corner_radius=10,
+            text_color=T("deep_bg"), corner_radius=10,
             width=140, height=32, cursor="hand2",
             command=self._on_load_stocks)
         self._load_btn.pack(side="left")
 
         # ── Row 2: Stock selector + Analyze ───────────────────
-        row2 = ctk.CTkFrame(parent, fg_color=DEEP_BG, corner_radius=0)
+        row2 = ctk.CTkFrame(parent, fg_color=T("deep_bg"), corner_radius=0)
         row2.pack(fill="x", padx=24, pady=(10, 0))
 
         ctk.CTkLabel(
             row2, text="Stock:", font=ctk.CTkFont("Segoe UI", 10),
-            text_color=TEXT_DIM
+            text_color=T("text_dim")
         ).pack(side="left")
 
         self._stock_var = ctk.StringVar()
         self._stock_combo = ctk.CTkComboBox(
             row2, variable=self._stock_var, state="readonly",
             width=420, font=ctk.CTkFont("Segoe UI", 10),
-            fg_color=CARD_BG, border_color=BORDER,
+            fg_color=T("card_bg"), border_color=T("border"),
             button_color=NEON_CYAN, button_hover_color=GLOW_CYAN,
-            dropdown_fg_color=PANEL_BG, dropdown_hover_color=CARD_BG,
-            dropdown_text_color=TEXT_BRIGHT, text_color=TEXT_BRIGHT,
+            dropdown_fg_color=T("panel_bg"), dropdown_hover_color=T("card_bg"),
+            dropdown_text_color=T("text_bright"), text_color=T("text_bright"),
             corner_radius=8)
         self._stock_combo.pack(side="left", padx=(6, 14))
 
@@ -547,19 +724,19 @@ class StockPicker(ctk.CTk):
             row2, text="\u26A1  Analyze",
             font=ctk.CTkFont("Segoe UI", 11, "bold"),
             fg_color=NEON_GREEN, hover_color="#00d470",
-            text_color=DEEP_BG, corner_radius=10,
+            text_color=T("deep_bg"), corner_radius=10,
             width=130, height=32, cursor="hand2",
             command=self._on_analyze)
         self._go_btn.pack(side="left")
         self._go_btn.configure(state="disabled")
 
         # ── Row 3: Sort + Status ──────────────────────────────
-        row3 = ctk.CTkFrame(parent, fg_color=DEEP_BG, corner_radius=0)
+        row3 = ctk.CTkFrame(parent, fg_color=T("deep_bg"), corner_radius=0)
         row3.pack(fill="x", padx=24, pady=(10, 0))
 
         ctk.CTkLabel(
             row3, text="Sort:", font=ctk.CTkFont("Segoe UI", 10),
-            text_color=TEXT_DIM
+            text_color=T("text_dim")
         ).pack(side="left")
 
         self._sort_var = ctk.StringVar(value=SORT_OPTIONS[0])
@@ -567,10 +744,10 @@ class StockPicker(ctk.CTk):
             row3, variable=self._sort_var, state="readonly",
             values=SORT_OPTIONS, width=260,
             font=ctk.CTkFont("Segoe UI", 10),
-            fg_color=CARD_BG, border_color=BORDER,
+            fg_color=T("card_bg"), border_color=T("border"),
             button_color=NEON_CYAN, button_hover_color=GLOW_CYAN,
-            dropdown_fg_color=PANEL_BG, dropdown_hover_color=CARD_BG,
-            dropdown_text_color=TEXT_BRIGHT, text_color=TEXT_BRIGHT,
+            dropdown_fg_color=T("panel_bg"), dropdown_hover_color=T("card_bg"),
+            dropdown_text_color=T("text_bright"), text_color=T("text_bright"),
             corner_radius=8, command=self._on_sort_change)
         self._sort_combo.pack(side="left", padx=(6, 18))
 
@@ -578,15 +755,15 @@ class StockPicker(ctk.CTk):
         self._status_label = ctk.CTkLabel(
             row3, textvariable=self._status_var,
             font=ctk.CTkFont("Consolas", 10),
-            text_color=TEXT_DIM)
+            text_color=T("text_dim"))
         self._status_label.pack(side="right")
 
-        # ── Separator (neon line) ─────────────────────────────
-        sep1 = ctk.CTkFrame(parent, fg_color=BORDER, height=1, corner_radius=0)
-        sep1.pack(fill="x", padx=24, pady=(14, 0))
+        # ── Separator ─────────────────────────────────────────
+        ctk.CTkFrame(parent, fg_color=T("border"), height=1, corner_radius=0
+                      ).pack(fill="x", padx=24, pady=(14, 0))
 
         # ── KPI Cards Bar ─────────────────────────────────────
-        self._kpi_frame = ctk.CTkFrame(parent, fg_color=DEEP_BG, corner_radius=0)
+        self._kpi_frame = ctk.CTkFrame(parent, fg_color=T("deep_bg"), corner_radius=0)
         self._kpi_frame.pack(fill="x", padx=24, pady=(12, 0))
         self._kpi_labels = {}
         self._kpi_cards = {}
@@ -602,59 +779,59 @@ class StockPicker(ctk.CTk):
 
         for key, title in kpi_defs:
             card = ctk.CTkFrame(
-                self._kpi_frame, fg_color=CARD_BG,
+                self._kpi_frame, fg_color=T("card_bg"),
                 corner_radius=12, border_width=1,
-                border_color=BORDER)
+                border_color=T("border"))
             card.pack(side="left", padx=(0, 10), ipadx=12, ipady=6)
 
             ctk.CTkLabel(
                 card, text=title,
                 font=ctk.CTkFont("Consolas", 8),
-                text_color=TEXT_MUTED
+                text_color=T("text_muted")
             ).pack(anchor="w", padx=8, pady=(4, 0))
 
             lbl = ctk.CTkLabel(
                 card, text="\u2014",
                 font=ctk.CTkFont("Consolas", 14, "bold"),
-                text_color=TEXT_BRIGHT)
+                text_color=T("text_bright"))
             lbl.pack(anchor="w", padx=8, pady=(0, 4))
 
             self._kpi_labels[key] = lbl
             self._kpi_cards[key] = card
 
         # ── Separator ─────────────────────────────────────────
-        sep2 = ctk.CTkFrame(parent, fg_color=BORDER, height=1, corner_radius=0)
-        sep2.pack(fill="x", padx=24, pady=(12, 0))
+        ctk.CTkFrame(parent, fg_color=T("border"), height=1, corner_radius=0
+                      ).pack(fill="x", padx=24, pady=(12, 0))
 
         # ── Charts Area (plain tk.Frame for matplotlib compat) ──
-        self._chart_frame = tk.Frame(parent, bg=DEEP_BG)
+        self._chart_frame = tk.Frame(parent, bg=T("deep_bg"))
         self._chart_frame.pack(fill="both", expand=True, padx=24, pady=(8, 4))
 
         tk.Label(
             self._chart_frame,
             text="Select an industry, load stocks, then analyze",
-            font=("Segoe UI", 13), fg=TEXT_MUTED, bg=DEEP_BG
+            font=("Segoe UI", 13), fg=T("text_muted"), bg=T("deep_bg")
         ).pack(expand=True)
 
         # ── Separator ─────────────────────────────────────────
-        sep3 = ctk.CTkFrame(parent, fg_color=BORDER, height=1, corner_radius=0)
-        sep3.pack(fill="x", padx=24, pady=(4, 0))
+        ctk.CTkFrame(parent, fg_color=T("border"), height=1, corner_radius=0
+                      ).pack(fill="x", padx=24, pady=(4, 0))
 
         # ── Explanation Text Box ──────────────────────────────
-        self._explain_frame = ctk.CTkFrame(parent, fg_color=DEEP_BG, corner_radius=0)
+        self._explain_frame = ctk.CTkFrame(parent, fg_color=T("deep_bg"), corner_radius=0)
         self._explain_frame.pack(fill="x", padx=24, pady=(8, 14))
 
         ctk.CTkLabel(
             self._explain_frame, text="METRIC EXPLANATION",
             font=ctk.CTkFont("Consolas", 9, "bold"),
-            text_color=TEXT_DIM
+            text_color=T("text_dim")
         ).pack(anchor="w")
 
         self._explain_text = ctk.CTkTextbox(
             self._explain_frame, height=100,
             font=ctk.CTkFont("Segoe UI", 9),
-            fg_color=PANEL_BG, text_color=TEXT_BRIGHT,
-            border_width=1, border_color=BORDER,
+            fg_color=T("panel_bg"), text_color=T("text_bright"),
+            border_width=1, border_color=T("border"),
             corner_radius=8, wrap="word")
         self._explain_text.pack(fill="x", pady=(4, 0))
         self._explain_text.configure(state="disabled")
@@ -663,9 +840,7 @@ class StockPicker(ctk.CTk):
     # ── News Intelligence Panel ───────────────────────────────
 
     def _build_news_panel(self):
-        """Build the right-side news intelligence panel (inside self._news_frame)."""
-        # Header
-        news_header = ctk.CTkFrame(self._news_frame, fg_color=PANEL_BG, corner_radius=0)
+        news_header = ctk.CTkFrame(self._news_frame, fg_color=T("panel_bg"), corner_radius=0)
         news_header.pack(fill="x", padx=14, pady=(16, 8))
 
         ctk.CTkLabel(
@@ -677,36 +852,33 @@ class StockPicker(ctk.CTk):
         ctk.CTkLabel(
             news_header, text="Sentiment-classified stock news",
             font=ctk.CTkFont("Segoe UI", 9),
-            text_color=TEXT_MUTED
+            text_color=T("text_muted")
         ).pack(anchor="w", pady=(2, 0))
 
-        sep = ctk.CTkFrame(self._news_frame, fg_color=NEON_CYAN, height=1, corner_radius=0)
-        sep.pack(fill="x", padx=14, pady=(0, 8))
+        ctk.CTkFrame(self._news_frame, fg_color=NEON_CYAN, height=1, corner_radius=0
+                      ).pack(fill="x", padx=14, pady=(0, 8))
 
-        # Scrollable news list
         self._news_scroll = ctk.CTkScrollableFrame(
-            self._news_frame, fg_color=PANEL_BG,
+            self._news_frame, fg_color=T("panel_bg"),
             corner_radius=0,
-            scrollbar_button_color=CARD_BG,
-            scrollbar_button_hover_color=TEXT_MUTED)
+            scrollbar_button_color=T("card_bg"),
+            scrollbar_button_hover_color=T("text_muted"))
         self._news_scroll.pack(fill="both", expand=True, padx=6, pady=(0, 10))
 
-        # Placeholder
         self._news_placeholder = ctk.CTkLabel(
             self._news_scroll,
             text="Analyze a stock to see\nrelated news articles",
             font=ctk.CTkFont("Segoe UI", 10),
-            text_color=TEXT_MUTED, justify="center")
+            text_color=T("text_muted"), justify="center")
         self._news_placeholder.pack(expand=True, pady=40)
 
     def _show_news_panel(self):
         if not self._news_panel_visible:
             self._news_frame.pack(side="right", fill="y", before=self._left_frame)
-            self._news_frame.pack_propagate(False)  # keep fixed 320px width
+            self._news_frame.pack_propagate(False)
             self._news_panel_visible = True
 
     def _populate_news(self, news_items):
-        """Fill news panel with classified news cards."""
         for w in self._news_scroll.winfo_children():
             w.destroy()
 
@@ -715,7 +887,7 @@ class StockPicker(ctk.CTk):
                 self._news_scroll,
                 text="No recent news found\nfor this stock",
                 font=ctk.CTkFont("Segoe UI", 10),
-                text_color=TEXT_MUTED, justify="center"
+                text_color=T("text_muted"), justify="center"
             ).pack(expand=True, pady=40)
             return
 
@@ -725,31 +897,20 @@ class StockPicker(ctk.CTk):
             source = item.get("source", "Unknown")
             date_str = item.get("date", "")
 
-            # Sentiment colors
             if sentiment == "bullish":
-                border_col = NEON_GREEN
-                dot = "\U0001F7E2"
-                label_text = "BULLISH"
-                label_color = NEON_GREEN
+                border_col, dot, label_text, label_color = NEON_GREEN, "\U0001F7E2", "BULLISH", NEON_GREEN
             elif sentiment == "bearish":
-                border_col = NEON_RED
-                dot = "\U0001F534"
-                label_text = "BEARISH"
-                label_color = NEON_RED
+                border_col, dot, label_text, label_color = NEON_RED, "\U0001F534", "BEARISH", NEON_RED
             else:
-                border_col = NEON_AMBER
-                dot = "\U0001F7E1"
-                label_text = "NEUTRAL"
-                label_color = NEON_AMBER
+                border_col, dot, label_text, label_color = NEON_AMBER, "\U0001F7E1", "NEUTRAL", NEON_AMBER
 
             card = ctk.CTkFrame(
-                self._news_scroll, fg_color=CARD_BG,
+                self._news_scroll, fg_color=T("card_bg"),
                 corner_radius=10, border_width=1,
                 border_color=border_col, cursor="hand2")
             card.pack(fill="x", padx=4, pady=(0, 8))
 
-            # Sentiment badge
-            badge_frame = ctk.CTkFrame(card, fg_color=CARD_BG, corner_radius=0)
+            badge_frame = ctk.CTkFrame(card, fg_color=T("card_bg"), corner_radius=0)
             badge_frame.pack(fill="x", padx=10, pady=(8, 0))
 
             ctk.CTkLabel(
@@ -762,30 +923,25 @@ class StockPicker(ctk.CTk):
                 ctk.CTkLabel(
                     badge_frame, text=date_str,
                     font=ctk.CTkFont("Consolas", 8),
-                    text_color=TEXT_MUTED
+                    text_color=T("text_muted")
                 ).pack(side="right")
 
-            # Title
             ctk.CTkLabel(
                 card, text=title,
                 font=ctk.CTkFont("Segoe UI", 9),
-                text_color=TEXT_BRIGHT,
+                text_color=T("text_bright"),
                 wraplength=260, justify="left"
             ).pack(fill="x", padx=10, pady=(4, 2))
 
-            # Source
             ctk.CTkLabel(
                 card, text=f"via {source}",
                 font=ctk.CTkFont("Segoe UI", 8),
-                text_color=TEXT_MUTED
+                text_color=T("text_muted")
             ).pack(anchor="w", padx=10, pady=(0, 8))
 
-            # Bind click on card and all its children
             news_data = dict(item)
-            news_data["dot"] = dot
-            news_data["label_text"] = label_text
-            news_data["label_color"] = label_color
-            news_data["border_col"] = border_col
+            news_data.update({"dot": dot, "label_text": label_text,
+                              "label_color": label_color, "border_col": border_col})
 
             def _on_card_click(e, data=news_data):
                 self._show_news_popup(data)
@@ -793,19 +949,17 @@ class StockPicker(ctk.CTk):
             card.bind("<Button-1>", _on_card_click)
             for child in card.winfo_children():
                 child.bind("<Button-1>", _on_card_click)
-                for grandchild in child.winfo_children():
-                    grandchild.bind("<Button-1>", _on_card_click)
+                for gc in child.winfo_children():
+                    gc.bind("<Button-1>", _on_card_click)
 
     def _show_news_popup(self, data):
-        """Show a popup window with news summary and impact analysis."""
         popup = ctk.CTkToplevel(self)
         popup.title("News Detail")
-        popup.configure(fg_color=DEEP_BG)
+        popup.configure(fg_color=T("deep_bg"))
         popup.resizable(False, False)
         popup.attributes("-topmost", True)
 
-        # Size and center on parent
-        pw, ph = 480, 420
+        pw, ph = 500, 460
         popup.geometry(f"{pw}x{ph}")
         self.update_idletasks()
         px = self.winfo_x() + (self.winfo_width() - pw) // 2
@@ -823,8 +977,7 @@ class StockPicker(ctk.CTk):
         label_color = data.get("label_color", NEON_AMBER)
         border_col = data.get("border_col", NEON_AMBER)
 
-        # ── Header bar with close button ──────────────────────
-        header = ctk.CTkFrame(popup, fg_color=PANEL_BG, corner_radius=0)
+        header = ctk.CTkFrame(popup, fg_color=T("panel_bg"), corner_radius=0)
         header.pack(fill="x")
 
         ctk.CTkLabel(
@@ -837,78 +990,66 @@ class StockPicker(ctk.CTk):
             ctk.CTkLabel(
                 header, text=date_str,
                 font=ctk.CTkFont("Consolas", 10),
-                text_color=TEXT_MUTED
+                text_color=T("text_muted")
             ).pack(side="left", padx=(0, 10), pady=10)
 
         close_btn = ctk.CTkButton(
             header, text="\u2715", width=32, height=32,
             font=ctk.CTkFont("Consolas", 14),
             fg_color="transparent", hover_color=NEON_RED,
-            text_color=TEXT_DIM, corner_radius=6,
+            text_color=T("text_dim"), corner_radius=6,
             command=popup.destroy)
         close_btn.pack(side="right", padx=10, pady=6)
 
-        # ── Accent line ───────────────────────────────────────
-        ctk.CTkFrame(popup, fg_color=border_col, height=2,
-                      corner_radius=0).pack(fill="x")
+        ctk.CTkFrame(popup, fg_color=border_col, height=2, corner_radius=0).pack(fill="x")
 
-        # ── Content area ──────────────────────────────────────
-        content = ctk.CTkFrame(popup, fg_color=DEEP_BG, corner_radius=0)
+        content = ctk.CTkScrollableFrame(popup, fg_color=T("deep_bg"), corner_radius=0)
         content.pack(fill="both", expand=True, padx=20, pady=(16, 20))
 
-        # Title
         ctk.CTkLabel(
             content, text=title,
             font=ctk.CTkFont("Segoe UI", 12, "bold"),
-            text_color=TEXT_BRIGHT,
-            wraplength=430, justify="left"
+            text_color=T("text_bright"),
+            wraplength=440, justify="left"
         ).pack(anchor="w")
 
         ctk.CTkLabel(
             content, text=f"via {source}",
             font=ctk.CTkFont("Segoe UI", 9),
-            text_color=TEXT_MUTED
+            text_color=T("text_muted")
         ).pack(anchor="w", pady=(2, 10))
 
-        # Summary (if available)
         if summary:
             ctk.CTkLabel(
                 content, text="SUMMARY",
                 font=ctk.CTkFont("Consolas", 9, "bold"),
-                text_color=TEXT_DIM
+                text_color=T("text_dim")
             ).pack(anchor="w")
-
             ctk.CTkLabel(
                 content, text=summary,
                 font=ctk.CTkFont("Segoe UI", 10),
-                text_color=TEXT_BRIGHT,
-                wraplength=430, justify="left"
+                text_color=T("text_bright"),
+                wraplength=440, justify="left"
             ).pack(anchor="w", pady=(4, 12))
 
-        # Impact analysis
         if impact:
-            impact_label = "WHY THIS MATTERS"
             ctk.CTkLabel(
-                content, text=impact_label,
+                content, text="WHY THIS MATTERS",
                 font=ctk.CTkFont("Consolas", 9, "bold"),
                 text_color=label_color
             ).pack(anchor="w")
-
             ctk.CTkLabel(
                 content, text=impact,
                 font=ctk.CTkFont("Segoe UI", 10),
-                text_color=TEXT_BRIGHT,
-                wraplength=430, justify="left"
+                text_color=T("text_bright"),
+                wraplength=440, justify="left"
             ).pack(anchor="w", pady=(4, 0))
 
-        # Close on Escape key
         popup.bind("<Escape>", lambda e: popup.destroy())
 
-        # Close on click outside — bind to root window after a short delay
         def _enable_outside_click():
             def _on_root_click(e):
                 try:
-                    # Check if click is outside the popup
                     x, y = e.x_root, e.y_root
                     px = popup.winfo_rootx()
                     py = popup.winfo_rooty()
@@ -919,7 +1060,6 @@ class StockPicker(ctk.CTk):
                         self.unbind_all("<Button-1>")
                 except Exception:
                     pass
-
             self.bind_all("<Button-1>", _on_root_click, add="+")
             popup.bind("<Destroy>", lambda e: self.unbind_all("<Button-1>"))
 
@@ -961,7 +1101,6 @@ class StockPicker(ctk.CTk):
         if industries:
             self._industry_var.set(industries[0])
 
-        # Reset stock state
         self._loaded_stocks = []
         self._stock_details = {}
         self._divergence_scores = {}
@@ -970,10 +1109,9 @@ class StockPicker(ctk.CTk):
         self._stock_var.set("")
         self._go_btn.configure(state="disabled")
         for key in self._kpi_labels:
-            self._kpi_labels[key].configure(text="\u2014", text_color=TEXT_BRIGHT)
-            self._kpi_cards[key].configure(border_color=BORDER)
+            self._kpi_labels[key].configure(text="\u2014", text_color=T("text_bright"))
+            self._kpi_cards[key].configure(border_color=T("border"))
 
-        # Fetch sector data for Level 1 pie
         self._fetch_sector_data(sector)
 
     # ══════════════════════════════════════════════════════════
@@ -1027,34 +1165,38 @@ class StockPicker(ctk.CTk):
     # ══════════════════════════════════════════════════════════
 
     def _get_chart_fig(self, figsize=(10.5, 7.0)):
-        """Create a matplotlib figure with neon styling."""
-        fig = Figure(figsize=figsize, dpi=96, facecolor=DEEP_BG)
+        fig = Figure(figsize=figsize, dpi=96, facecolor=T("deep_bg"))
         return fig
 
     def _neon_glow(self, ax):
-        """Apply mplcyberpunk glow to an axes if available."""
-        if HAS_CYBERPUNK:
+        if HAS_CYBERPUNK and T("use_cyberpunk"):
             try:
+                # Remember original line count before glow adds duplicates
+                n_before = len(ax.lines)
                 mplcyberpunk.make_lines_glow(ax)
+                # Remove legend labels from glow-duplicated lines
+                for line in ax.lines[n_before:]:
+                    line.set_label("_nolegend_")
             except Exception:
                 pass
 
     def _style_axis(self, ax):
-        """Apply neon terminal styling to a chart axis."""
-        ax.set_facecolor(PANEL_BG)
-        ax.tick_params(colors=TEXT_DIM, labelsize=8)
+        ax.set_facecolor(T("panel_bg"))
+        ax.tick_params(colors=T("text_dim"), labelsize=8)
         for spine in ax.spines.values():
-            spine.set_color(BORDER)
-        ax.grid(True, alpha=0.15, color=TEXT_MUTED)
+            spine.set_color(T("border"))
+        ax.grid(True, alpha=0.15, color=T("text_muted"))
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=6, integer=False))
 
     def _render_pie_level1(self):
         self._pie_level = 1
+        self._last_analyze_args = None
         for w in self._chart_frame.winfo_children():
             w.destroy()
 
         fig = self._get_chart_fig(figsize=(12, 7.5))
         ax_pie = fig.add_subplot(111)
-        ax_pie.set_facecolor(DEEP_BG)
+        ax_pie.set_facecolor(T("deep_bg"))
 
         items = sorted(self._sector_data.items(), key=lambda x: x[1], reverse=True)
         items = [(k, v) for k, v in items if v > 0]
@@ -1074,7 +1216,7 @@ class StockPicker(ctk.CTk):
             others_sum = sum(v for _, v in items[12:])
             labels.append("Others")
             sizes.append(others_sum)
-            colors.append(TEXT_MUTED)
+            colors.append(T("text_muted"))
             wedge_keys.append(None)
 
         self._pie_wedge_keys = wedge_keys
@@ -1088,11 +1230,11 @@ class StockPicker(ctk.CTk):
                 sizes, labels=labels, colors=colors, explode=explode_list,
                 autopct=lambda p: f"{p:.1f}%" if p > 3 else "",
                 startangle=140, pctdistance=0.80, labeldistance=1.12,
-                textprops={"fontsize": 9, "color": TEXT_BRIGHT},
-                wedgeprops={"edgecolor": DEEP_BG, "linewidth": 2})
+                textprops={"fontsize": 9, "color": T("text_bright")},
+                wedgeprops={"edgecolor": T("deep_bg"), "linewidth": 2})
             for at in autotexts:
                 at.set_fontsize(8)
-                at.set_color(DEEP_BG)
+                at.set_color(T("deep_bg"))
                 at.set_fontweight("bold")
             self._pie_wedges = list(wedges)
         else:
@@ -1116,12 +1258,13 @@ class StockPicker(ctk.CTk):
 
     def _render_pie_only(self):
         self._pie_level = 2
+        self._last_analyze_args = None
         for w in self._chart_frame.winfo_children():
             w.destroy()
 
         fig = self._get_chart_fig(figsize=(12, 7.5))
         ax_pie = fig.add_subplot(111)
-        ax_pie.set_facecolor(DEEP_BG)
+        ax_pie.set_facecolor(T("deep_bg"))
 
         industry = self._industry_var.get()
         same_industry = [s for s, d in self._stock_details.items()
@@ -1149,7 +1292,7 @@ class StockPicker(ctk.CTk):
             others_sum = sum(sizes[12:])
             top_labels.append("Others")
             top_sizes.append(others_sum)
-            top_colors.append(TEXT_MUTED)
+            top_colors.append(T("text_muted"))
             top_keys.append(None)
             labels, sizes, colors, wedge_keys = top_labels, top_sizes, top_colors, top_keys
 
@@ -1160,11 +1303,11 @@ class StockPicker(ctk.CTk):
                 sizes, labels=labels, colors=colors,
                 autopct=lambda p: f"{p:.1f}%" if p > 3 else "",
                 startangle=140, pctdistance=0.80, labeldistance=1.12,
-                textprops={"fontsize": 9, "color": TEXT_BRIGHT},
-                wedgeprops={"edgecolor": DEEP_BG, "linewidth": 2})
+                textprops={"fontsize": 9, "color": T("text_bright")},
+                wedgeprops={"edgecolor": T("deep_bg"), "linewidth": 2})
             for at in autotexts:
                 at.set_fontsize(8)
-                at.set_color(DEEP_BG)
+                at.set_color(T("deep_bg"))
                 at.set_fontweight("bold")
             self._pie_wedges = list(wedges)
         else:
@@ -1185,11 +1328,10 @@ class StockPicker(ctk.CTk):
         self._pie_canvas = canvas
         self._pie_fig = fig
 
-        # Back button
         back_btn = tk.Button(
             self._chart_frame, text="\u2190  Back to Sector View",
-            font=("Segoe UI", 9), fg=NEON_CYAN, bg=CARD_BG,
-            activebackground=BORDER, activeforeground=NEON_CYAN,
+            font=("Segoe UI", 9), fg=NEON_CYAN, bg=T("card_bg"),
+            activebackground=T("border"), activeforeground=NEON_CYAN,
             relief="flat", padx=10, pady=4, cursor="hand2",
             command=self._on_back_to_sector)
         back_btn.place(relx=0.0, rely=0.0, x=8, y=8)
@@ -1214,8 +1356,6 @@ class StockPicker(ctk.CTk):
     def _on_pie_industry_click(self, industry_name):
         if self._load_btn.cget("state") == "disabled":
             return
-        industries = list(self._industry_combo.cget("values") if hasattr(self._industry_combo, 'cget') else [])
-        # CTkComboBox stores values differently
         try:
             industries = self._industry_combo._values
         except AttributeError:
@@ -1257,6 +1397,7 @@ class StockPicker(ctk.CTk):
 
     def _on_back_to_sector(self):
         self._pie_level = 1
+        self._last_analyze_args = None
         if self._sector_data:
             self._render_pie_level1()
         else:
@@ -1349,7 +1490,6 @@ class StockPicker(ctk.CTk):
             f"{len(quotes)} stocks loaded (of {total} in {industry}) \u2014 computing value scores...")
 
         self._compute_divergence_scores(list(details.keys()))
-
         self._pie_level = 2
         self._render_pie_only()
 
@@ -1461,14 +1601,10 @@ class StockPicker(ctk.CTk):
         for sym in symbols:
             d = self._stock_details[sym]
             name = d.get("name", sym)
-
             suffix = ""
             if sort_key == "Value Divergence (default)":
                 score = self._divergence_scores.get(sym, -9999)
-                if score > -9999:
-                    suffix = f"  [VD: {score:+.0f}]"
-                else:
-                    suffix = "  [VD: N/A]"
+                suffix = f"  [VD: {score:+.0f}]" if score > -9999 else "  [VD: N/A]"
             elif sort_key == "Market Cap":
                 suffix = f"  [{fmt_inr(d.get('marketCap', 0))}]"
             elif sort_key == "P/E Ratio (low first)":
@@ -1517,30 +1653,26 @@ class StockPicker(ctk.CTk):
             return
 
         self._go_btn.configure(state="disabled")
+        self._current_symbol = symbol
         info = self._stock_details.get(symbol, {})
         name = info.get("name", symbol)
         self._status_var.set(f"Analyzing {name}...")
 
         industry = info.get("industry", "Unknown")
 
-        # Update KPI cards with neon borders
         self._kpi_labels["industry"].configure(text=industry)
         self._kpi_cards["industry"].configure(border_color=NEON_CYAN)
-
         self._kpi_labels["mcap"].configure(text=fmt_inr(info.get("marketCap", 0)))
         self._kpi_cards["mcap"].configure(border_color=NEON_CYAN)
-
         price = info.get("currentPrice", 0)
         self._kpi_labels["price"].configure(
             text=f"\u20b9{price:,.2f}" if price else "\u2014")
         self._kpi_cards["price"].configure(border_color=NEON_CYAN)
-
         pe = info.get("trailingPE", 0)
         self._kpi_labels["pe"].configure(text=f"{pe:.1f}" if pe else "\u2014")
         self._kpi_cards["pe"].configure(border_color=NEON_CYAN)
-
-        self._kpi_labels["signal"].configure(text="...", text_color=TEXT_DIM)
-        self._kpi_cards["signal"].configure(border_color=BORDER)
+        self._kpi_labels["signal"].configure(text="...", text_color=T("text_dim"))
+        self._kpi_cards["signal"].configure(border_color=T("border"))
 
         same_industry = [s for s, d in self._stock_details.items()
                          if d.get("industry") == industry]
@@ -1554,15 +1686,17 @@ class StockPicker(ctk.CTk):
         top_peers = [s for s, _ in peers[:5]]
         all_tickers = [symbol] + top_peers
 
-        # Show news panel
         self._show_news_panel()
-        self._populate_news([])  # clear while loading
+        self._populate_news([])
 
         def work():
-            revenue_data = {}
+            revenue_data = {}       # annual: {ticker: {year: val}}
+            revenue_quarterly = {}  # quarterly: {ticker: {(year,quarter): val}}
             for t in all_tickers:
                 try:
-                    inc = yf.Ticker(t).income_stmt
+                    tk_obj = yf.Ticker(t)
+                    # Annual
+                    inc = tk_obj.income_stmt
                     if inc is not None and not inc.empty:
                         row = None
                         for lbl in ["Total Revenue", "Operating Revenue"]:
@@ -1577,20 +1711,82 @@ class StockPicker(ctk.CTk):
                                 if pd.notna(val):
                                     yearly[yr] = float(val)
                             revenue_data[t] = yearly
+                    # Quarterly
+                    qi = tk_obj.quarterly_income_stmt
+                    if qi is not None and not qi.empty:
+                        qrow = None
+                        for lbl in ["Total Revenue", "Operating Revenue"]:
+                            if lbl in qi.index:
+                                qrow = qi.loc[lbl]
+                                break
+                        if qrow is not None:
+                            qdata = {}
+                            for col in qrow.index:
+                                val = qrow[col]
+                                if pd.notna(val):
+                                    dt = pd.Timestamp(col)
+                                    qkey = (dt.year, (dt.month - 1) // 3 + 1)
+                                    qdata[qkey] = float(val)
+                            if qdata:
+                                revenue_quarterly[t] = qdata
                 except Exception:
                     pass
 
             price_yearly = {}
+            price_quarterly = {}  # {(year,quarter): avg_close}
+            candle_hist = None
             try:
-                hist = yf.Ticker(symbol).history(period="3y")
+                ticker_obj = yf.Ticker(symbol)
+                hist = ticker_obj.history(period="4y")
                 if hist is not None and not hist.empty:
                     hist.index = pd.to_datetime(hist.index)
+                    candle_hist = hist.copy()
                     for yr_group, group_df in hist.groupby(hist.index.year):
                         price_yearly[yr_group] = float(group_df["Close"].mean())
+                    # Quarterly avg prices
+                    for (yr, qtr), group_df in hist.groupby(
+                            [hist.index.year, (hist.index.month - 1) // 3 + 1]):
+                        price_quarterly[(yr, qtr)] = float(group_df["Close"].mean())
             except Exception:
                 pass
 
-            # Fetch news — use Google News RSS for Indian (.NS) stocks
+            # Fetch financials for news impact notes
+            financials = {}
+            try:
+                sel_rev = revenue_data.get(symbol, {})
+                if sel_rev:
+                    years = sorted(sel_rev.keys())
+                    financials["revenue_cr"] = sel_rev[years[-1]] / 1e7
+                    if len(years) >= 2 and sel_rev[years[-2]] != 0:
+                        financials["revenue_growth"] = (sel_rev[years[-1]] - sel_rev[years[-2]]) / sel_rev[years[-2]] * 100
+
+                # Net profit
+                inc = yf.Ticker(symbol).income_stmt
+                if inc is not None and not inc.empty:
+                    for lbl in ["Net Income", "Net Income Common Stockholders"]:
+                        if lbl in inc.index:
+                            pat_row = inc.loc[lbl]
+                            pat_vals = {}
+                            for col in pat_row.index:
+                                yr = col.year if hasattr(col, "year") else int(str(col)[:4])
+                                val = pat_row[col]
+                                if pd.notna(val):
+                                    pat_vals[yr] = float(val)
+                            if pat_vals:
+                                yrs = sorted(pat_vals.keys())
+                                financials["net_profit_cr"] = pat_vals[yrs[-1]] / 1e7
+                                if len(yrs) >= 2 and pat_vals[yrs[-2]] != 0:
+                                    financials["profit_growth"] = (pat_vals[yrs[-1]] - pat_vals[yrs[-2]]) / pat_vals[yrs[-2]] * 100
+                            break
+
+                financials["pe"] = info.get("trailingPE", 0) or None
+                mcap = info.get("marketCap", 0)
+                if mcap:
+                    financials["mcap_cr"] = mcap / 1e7
+            except Exception:
+                pass
+
+            # Fetch news
             news_items = []
             try:
                 stock_name = self._stock_details.get(symbol, {}).get("name", symbol.replace(".NS", ""))
@@ -1600,46 +1796,68 @@ class StockPicker(ctk.CTk):
                     summary = article.get("summary", "")
                     source = article.get("source", "Unknown")
                     date_short = article.get("date", "")
-
                     sentiment, kw_hits = classify_sentiment(title)
-                    impact = build_impact_note(sentiment, kw_hits, title)
+                    impact = build_impact_note(sentiment, kw_hits, title,
+                                              financials=financials if financials else None)
                     news_items.append({
-                        "title": title,
-                        "summary": summary,
-                        "source": source,
-                        "date": date_short,
-                        "sentiment": sentiment,
-                        "impact": impact,
+                        "title": title, "summary": summary,
+                        "source": source, "date": date_short,
+                        "sentiment": sentiment, "impact": impact,
                     })
             except Exception:
                 pass
 
+            self._candle_hist = candle_hist
+
             self.after(0, lambda: self._render_charts(
                 symbol, same_industry, all_tickers,
-                revenue_data, price_yearly, news_items))
+                revenue_data, price_yearly, news_items,
+                revenue_quarterly, price_quarterly))
 
         threading.Thread(target=work, daemon=True).start()
 
     # ══════════════════════════════════════════════════════════
-    #  RENDER CHARTS (Neon Glow)
+    #  RENDER CHARTS — Side-by-side layout
+    #  Left: Revenue + Divergence + Candle (stacked)
+    #  Right: Pie chart (big)
     # ══════════════════════════════════════════════════════════
 
     def _render_charts(self, selected, same_industry, chart_tickers,
-                       revenue_data, price_yearly, news_items=None):
+                       revenue_data, price_yearly, news_items=None,
+                       revenue_quarterly=None, price_quarterly=None):
         for w in self._chart_frame.winfo_children():
             w.destroy()
 
-        # Populate news panel
+        if revenue_quarterly is None:
+            revenue_quarterly = {}
+        if price_quarterly is None:
+            price_quarterly = {}
+
+        # Save args for re-render on theme switch / period change
+        self._last_analyze_args = (selected, same_industry, chart_tickers,
+                                   revenue_data, price_yearly, news_items,
+                                   revenue_quarterly, price_quarterly)
+
         if news_items is not None:
             self._populate_news(news_items)
 
-        fig = self._get_chart_fig(figsize=(12, 9.5))
-        gs = fig.add_gridspec(3, 2, height_ratios=[1.3, 0.8, 0.8],
-                              hspace=0.38, wspace=0.3)
+        # ── Side-by-side layout using grid for proper sizing ──
+        self._chart_frame.columnconfigure(0, weight=55)
+        self._chart_frame.columnconfigure(1, weight=45)
+        self._chart_frame.rowconfigure(0, weight=1)
 
-        # ── Row 1: Full-width Pie Chart ──────────────────────
-        ax_pie = fig.add_subplot(gs[0, :])
-        ax_pie.set_facecolor(DEEP_BG)
+        left_frame = tk.Frame(self._chart_frame, bg=T("deep_bg"))
+        left_frame.grid(row=0, column=0, sticky="nsew")
+
+        right_frame = tk.Frame(self._chart_frame, bg=T("deep_bg"))
+        right_frame.grid(row=0, column=1, sticky="nsew")
+
+        # ═══════════════════════════════════════════════════════
+        #  RIGHT SIDE: Big Pie Chart
+        # ═══════════════════════════════════════════════════════
+        fig_pie = self._get_chart_fig(figsize=(5.5, 7.5))
+        ax_pie = fig_pie.add_subplot(111)
+        ax_pie.set_facecolor(T("deep_bg"))
 
         labels, sizes, colors, explode_list, wedge_keys = [], [], [], [], []
         for i, t in enumerate(same_industry):
@@ -1648,8 +1866,8 @@ class StockPicker(ctk.CTk):
             if mcap <= 0:
                 continue
             short = d.get("name", t)
-            if len(short) > 20:
-                short = short[:18] + ".."
+            if len(short) > 18:
+                short = short[:16] + ".."
             labels.append(short)
             sizes.append(mcap)
             colors.append(CHART_COLORS[i % len(CHART_COLORS)])
@@ -1658,29 +1876,26 @@ class StockPicker(ctk.CTk):
 
         if sizes:
             if len(sizes) > 12:
-                top_labels = labels[:12]
-                top_sizes = sizes[:12]
-                top_colors = colors[:12]
-                top_explode = explode_list[:12]
-                top_keys = wedge_keys[:12]
+                top_labels, top_sizes, top_colors = labels[:12], sizes[:12], colors[:12]
+                top_explode, top_keys = explode_list[:12], wedge_keys[:12]
                 others_sum = sum(sizes[12:])
                 top_labels.append("Others")
                 top_sizes.append(others_sum)
-                top_colors.append(TEXT_MUTED)
+                top_colors.append(T("text_muted"))
                 top_explode.append(0)
                 top_keys.append(None)
-                labels, sizes, colors, explode_list = top_labels, top_sizes, top_colors, top_explode
-                wedge_keys = top_keys
+                labels, sizes, colors, explode_list, wedge_keys = \
+                    top_labels, top_sizes, top_colors, top_explode, top_keys
 
             wedges, texts, autotexts = ax_pie.pie(
                 sizes, labels=labels, colors=colors, explode=explode_list,
                 autopct=lambda p: f"{p:.1f}%" if p > 3 else "",
-                startangle=140, pctdistance=0.82, labeldistance=1.10,
-                textprops={"fontsize": 9, "color": TEXT_BRIGHT},
-                wedgeprops={"edgecolor": DEEP_BG, "linewidth": 2})
+                startangle=140, pctdistance=0.80, labeldistance=1.12,
+                textprops={"fontsize": 8, "color": T("text_bright")},
+                wedgeprops={"edgecolor": T("deep_bg"), "linewidth": 2})
             for at in autotexts:
-                at.set_fontsize(8)
-                at.set_color(DEEP_BG)
+                at.set_fontsize(7)
+                at.set_color(T("deep_bg"))
                 at.set_fontweight("bold")
             self._pie_wedges = list(wedges)
             self._pie_wedge_keys = wedge_keys
@@ -1690,27 +1905,152 @@ class StockPicker(ctk.CTk):
             self._pie_wedge_keys = []
 
         industry = self._industry_var.get()
-        ax_pie.set_title(f"Market Share \u2014 {industry} (NSE)",
-                         fontsize=13, color=NEON_CYAN, pad=14,
+        ax_pie.set_title(f"Market Share \u2014 {industry}",
+                         fontsize=11, color=NEON_CYAN, pad=10,
                          fontfamily="Consolas", fontweight="bold")
 
-        # ── Row 2-Left: Revenue vs Peers (Neon Glow) ──────────
-        ax_rev = fig.add_subplot(gs[1, :])
-        self._style_axis(ax_rev)
+        fig_pie.tight_layout(pad=1.5)
+        canvas_pie = FigureCanvasTkAgg(fig_pie, master=right_frame)
+        canvas_pie.draw()
+        canvas_pie.get_tk_widget().pack(fill="both", expand=True)
 
-        if revenue_data:
+        canvas_pie.mpl_connect('button_press_event', self._on_pie_click)
+        canvas_pie.mpl_connect('motion_notify_event', self._on_pie_hover)
+        self._pie_canvas = canvas_pie
+        self._pie_fig = fig_pie
+
+        # ═══════════════════════════════════════════════════════
+        #  LEFT SIDE: Revenue + Divergence + Candle (stacked)
+        # ═══════════════════════════════════════════════════════
+        fig_left = self._get_chart_fig(figsize=(7, 7.5))
+        gs = fig_left.add_gridspec(3, 1, height_ratios=[1, 1, 1.2], hspace=0.45)
+
+        ax_rev = fig_left.add_subplot(gs[0])
+        ax_div = fig_left.add_subplot(gs[1])
+        ax_candle = fig_left.add_subplot(gs[2])
+
+        # Draw all three charts
+        self._draw_revenue(ax_rev, selected, chart_tickers, revenue_data, revenue_quarterly)
+        self._draw_divergence(ax_div, selected, revenue_data, price_yearly,
+                              revenue_quarterly, price_quarterly)
+        self._draw_candle(ax_candle, selected, self._candle_period)
+
+        fig_left.tight_layout(pad=1.5)
+        canvas_left = FigureCanvasTkAgg(fig_left, master=left_frame)
+        canvas_left.draw()
+        canvas_left.get_tk_widget().pack(fill="both", expand=True)
+
+        # Store refs for in-place redraw (no flash on period switch)
+        self._left_fig = fig_left
+        self._left_canvas = canvas_left
+        self._left_gs = gs
+        self._candle_ax = ax_candle
+        self._rev_ax = ax_rev
+        self._div_ax = ax_div
+
+        # ── Timeline buttons (controls ALL left charts) ──────
+        tf_frame = tk.Frame(left_frame, bg=T("deep_bg"))
+        tf_frame.pack(fill="x", pady=(2, 0))
+        self._tf_frame = tf_frame
+
+        tk.Label(tf_frame, text="Timeline:", font=("Consolas", 8),
+                 fg=T("text_dim"), bg=T("deep_bg")).pack(side="left", padx=(4, 4))
+
+        for period_label, period_val in [("1M", "1mo"), ("3M", "3mo"), ("6M", "6mo"),
+                                          ("1Y", "1y"), ("2Y", "2y"), ("3Y", "3y"), ("4Y", "4y")]:
+            is_active = (period_val == self._candle_period)
+            btn = tk.Button(
+                tf_frame, text=period_label,
+                font=("Consolas", 8, "bold" if is_active else "normal"),
+                fg=NEON_CYAN if is_active else T("text_dim"),
+                bg=T("card_bg") if is_active else T("deep_bg"),
+                activebackground=T("card_bg"), activeforeground=NEON_CYAN,
+                relief="flat", padx=6, pady=2, cursor="hand2",
+                command=lambda p=period_val: self._on_period_change(p))
+            btn.pack(side="left", padx=1)
+
+        # Back button
+        back_btn = tk.Button(
+            left_frame, text="\u2190  Back to Sector View",
+            font=("Segoe UI", 9), fg=NEON_CYAN, bg=T("card_bg"),
+            activebackground=T("border"), activeforeground=NEON_CYAN,
+            relief="flat", padx=10, pady=4, cursor="hand2",
+            command=self._on_back_to_sector)
+        back_btn.place(relx=0.0, rely=0.0, x=8, y=8)
+
+        self._go_btn.configure(state="normal")
+        name = self._stock_details.get(selected, {}).get("name", selected)
+        n_peers = len(chart_tickers) - 1
+        self._status_var.set(f"{name} \u2014 {n_peers} peer(s) charted")
+
+    # ──────────────────────────────────────────────────────────
+    #  REVENUE CHART (extracted for in-place redraw)
+    # ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _qkey_label(qk):
+        """Format (year, quarter) tuple as 'Q1'25'."""
+        return f"Q{qk[1]}'{str(qk[0])[-2:]}"
+
+    def _draw_revenue(self, ax, selected, chart_tickers, revenue_data,
+                      revenue_quarterly=None):
+        """Draw revenue vs peers — quarterly for <=1Y, annual for longer."""
+        ax.clear()
+        self._style_axis(ax)
+        if revenue_quarterly is None:
+            revenue_quarterly = {}
+
+        period = self._candle_period
+        use_quarterly = period in ("1mo", "3mo", "6mo", "1y")
+
+        # How many data points to keep
+        max_pts = {"1mo": 2, "3mo": 3, "6mo": 4, "1y": 5,
+                   "2y": 2, "3y": 3, "4y": 4}
+        n_pts = max_pts.get(period, 3)
+        has_data = False
+
+        if use_quarterly and revenue_quarterly:
+            # Gather all quarter keys across tickers
+            all_qkeys = set()
+            for qdata in revenue_quarterly.values():
+                all_qkeys.update(qdata.keys())
+            all_qkeys = sorted(all_qkeys)
+            if len(all_qkeys) > n_pts:
+                all_qkeys = all_qkeys[-n_pts:]
+
+            for i, t in enumerate(chart_tickers):
+                qdata = revenue_quarterly.get(t, {})
+                if not qdata:
+                    continue
+                keys_present = [k for k in all_qkeys if k in qdata]
+                if not keys_present:
+                    continue
+                values = [qdata[k] / 1e7 for k in keys_present]
+                x_labels = [self._qkey_label(k) for k in keys_present]
+                color = CHART_COLORS[i % len(CHART_COLORS)]
+                name = self._stock_details.get(t, {}).get("name", t)
+                if len(name) > 16:
+                    name = name[:14] + ".."
+                lw = 2.5 if t == selected else 1.5
+                marker = "o" if t == selected else "s"
+                ax.plot(x_labels, values, color=color, label=name,
+                        linewidth=lw, marker=marker, markersize=5)
+                has_data = True
+        elif revenue_data:
             all_years = set()
             for yearly in revenue_data.values():
                 all_years.update(yearly.keys())
             all_years = sorted(all_years)
-            if len(all_years) > 3:
-                all_years = all_years[-3:]
+            if len(all_years) > n_pts:
+                all_years = all_years[-n_pts:]
 
             for i, t in enumerate(chart_tickers):
                 if t not in revenue_data:
                     continue
                 yearly = revenue_data[t]
                 years_present = [y for y in all_years if y in yearly]
+                if not years_present:
+                    continue
                 values = [yearly[y] / 1e7 for y in years_present]
                 x_labels = [f"FY{str(y)[-2:]}" for y in years_present]
                 color = CHART_COLORS[i % len(CHART_COLORS)]
@@ -1719,131 +2059,265 @@ class StockPicker(ctk.CTk):
                     name = name[:14] + ".."
                 lw = 2.5 if t == selected else 1.5
                 marker = "o" if t == selected else "s"
-                ax_rev.plot(x_labels, values, color=color, label=name,
-                            linewidth=lw, marker=marker, markersize=5)
+                ax.plot(x_labels, values, color=color, label=name,
+                        linewidth=lw, marker=marker, markersize=5)
+                has_data = True
 
-            self._neon_glow(ax_rev)
-            ax_rev.legend(fontsize=7, facecolor=CARD_BG, edgecolor=BORDER,
-                          labelcolor=TEXT_BRIGHT, loc="upper left")
-            ax_rev.set_ylabel("Revenue (\u20b9 Cr)", fontsize=9, color=TEXT_DIM)
+        if has_data:
+            self._neon_glow(ax)
+            ax.legend(fontsize=6, facecolor=T("card_bg"), edgecolor=T("border"),
+                      labelcolor=T("text_bright"), loc="upper left")
+            ax.set_ylabel("Revenue (\u20b9 Cr)", fontsize=8, color=T("text_dim"))
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(
+                lambda v, _: f"\u20b9{v:,.0f}" if v >= 1 else f"{v:.1f}"))
         else:
-            ax_rev.text(0.5, 0.5, "No revenue data available",
-                        ha="center", va="center", fontsize=10, color=TEXT_MUTED,
-                        transform=ax_rev.transAxes)
+            ax.text(0.5, 0.5, "No revenue data available",
+                    ha="center", va="center", fontsize=10, color=T("text_muted"),
+                    transform=ax.transAxes)
 
-        ax_rev.set_title("Revenue \u2014 Selected vs Top Peers",
-                         fontsize=11, color=NEON_CYAN, pad=10,
-                         fontfamily="Consolas", fontweight="bold")
+        granularity = "Quarterly" if use_quarterly and revenue_quarterly else "Annual"
+        period_label = period.upper().replace("MO", "M")
+        ax.set_title(f"Revenue \u2014 Selected vs Peers ({period_label}, {granularity})",
+                     fontsize=10, color=NEON_CYAN, pad=8,
+                     fontfamily="Consolas", fontweight="bold")
 
-        # ── Row 3: Value Divergence (Neon Glow) ───────────────
-        ax_div = fig.add_subplot(gs[2, :])
-        self._style_axis(ax_div)
+    # ──────────────────────────────────────────────────────────
+    #  VALUE DIVERGENCE CHART (extracted for in-place redraw)
+    # ──────────────────────────────────────────────────────────
 
-        sel_revenue = revenue_data.get(selected, {})
-        common_years = sorted(set(sel_revenue.keys()) & set(price_yearly.keys()))
+    def _draw_divergence(self, ax, selected, revenue_data, price_yearly,
+                         revenue_quarterly=None, price_quarterly=None):
+        """Draw value divergence — quarterly for <=1Y, annual for longer."""
+        ax.clear()
+        self._style_axis(ax)
+        if revenue_quarterly is None:
+            revenue_quarterly = {}
+        if price_quarterly is None:
+            price_quarterly = {}
 
-        if len(common_years) >= 2:
-            rev_vals = [sel_revenue[y] for y in common_years]
-            price_vals = [price_yearly[y] for y in common_years]
+        period = self._candle_period
+        use_quarterly = period in ("1mo", "3mo", "6mo", "1y")
+        has_data = False
 
-            rev_base = rev_vals[0] if rev_vals[0] != 0 else 1
-            price_base = price_vals[0] if price_vals[0] != 0 else 1
-            rev_idx = [v / rev_base * 100 for v in rev_vals]
-            price_idx = [v / price_base * 100 for v in price_vals]
-            x_labels = [f"FY{str(y)[-2:]}" for y in common_years]
-            x_pos = list(range(len(common_years)))
+        max_pts = {"1mo": 2, "3mo": 3, "6mo": 4, "1y": 5,
+                   "2y": 2, "3y": 3, "4y": 4}
+        n_pts = max_pts.get(period, 3)
 
-            ax_div.plot(x_pos, rev_idx, color=NEON_CYAN, linewidth=2.5,
-                        marker="o", markersize=7, label="Revenue Index", zorder=3)
-            ax_div.plot(x_pos, price_idx, color=NEON_GREEN, linewidth=2.5,
-                        marker="D", markersize=7, label="Avg Price Index", zorder=3)
+        if use_quarterly and selected in revenue_quarterly and price_quarterly:
+            sel_qrev = revenue_quarterly[selected]
+            common_qkeys = sorted(set(sel_qrev.keys()) & set(price_quarterly.keys()))
+            if len(common_qkeys) > n_pts:
+                common_qkeys = common_qkeys[-n_pts:]
 
-            self._neon_glow(ax_div)
+            if len(common_qkeys) >= 2:
+                rev_vals = [sel_qrev[k] for k in common_qkeys]
+                price_vals = [price_quarterly[k] for k in common_qkeys]
+                rev_base = rev_vals[0] if rev_vals[0] != 0 else 1
+                price_base = price_vals[0] if price_vals[0] != 0 else 1
+                rev_idx = [v / rev_base * 100 for v in rev_vals]
+                price_idx = [v / price_base * 100 for v in price_vals]
+                x_labels = [self._qkey_label(k) for k in common_qkeys]
+                x_pos = list(range(len(common_qkeys)))
+                has_data = True
+
+        if not has_data:
+            # Fall back to annual
+            sel_revenue = revenue_data.get(selected, {})
+            common_years = sorted(set(sel_revenue.keys()) & set(price_yearly.keys()))
+            if len(common_years) > n_pts:
+                common_years = common_years[-n_pts:]
+
+            if len(common_years) >= 2:
+                rev_vals = [sel_revenue[y] for y in common_years]
+                price_vals = [price_yearly[y] for y in common_years]
+                rev_base = rev_vals[0] if rev_vals[0] != 0 else 1
+                price_base = price_vals[0] if price_vals[0] != 0 else 1
+                rev_idx = [v / rev_base * 100 for v in rev_vals]
+                price_idx = [v / price_base * 100 for v in price_vals]
+                x_labels = [f"FY{str(y)[-2:]}" for y in common_years]
+                x_pos = list(range(len(common_years)))
+                has_data = True
+
+        if has_data:
+            ax.plot(x_pos, rev_idx, color=NEON_CYAN, linewidth=2.5,
+                    marker="o", markersize=6, label="Revenue Index", zorder=3)
+            ax.plot(x_pos, price_idx, color=NEON_GREEN, linewidth=2.5,
+                    marker="D", markersize=6, label="Avg Price Index", zorder=3)
+            self._neon_glow(ax)
 
             rev_arr = np.array(rev_idx)
             price_arr = np.array(price_idx)
             x_arr = np.array(x_pos)
-            ax_div.fill_between(x_arr, rev_arr, price_arr,
-                                where=rev_arr >= price_arr,
-                                alpha=0.15, color=NEON_GREEN,
-                                label="Undervalued zone", interpolate=True)
-            ax_div.fill_between(x_arr, rev_arr, price_arr,
-                                where=price_arr > rev_arr,
-                                alpha=0.15, color=NEON_RED,
-                                label="Overvalued zone", interpolate=True)
+            ax.fill_between(x_arr, rev_arr, price_arr,
+                            where=rev_arr >= price_arr,
+                            alpha=0.15, color=NEON_GREEN,
+                            label="Undervalued zone", interpolate=True)
+            ax.fill_between(x_arr, rev_arr, price_arr,
+                            where=price_arr > rev_arr,
+                            alpha=0.15, color=NEON_RED,
+                            label="Overvalued zone", interpolate=True)
 
-            ax_div.axhline(100, color=TEXT_MUTED, linewidth=0.8, linestyle="--", alpha=0.5)
-            ax_div.set_xticks(x_pos)
-            ax_div.set_xticklabels(x_labels)
-            ax_div.legend(fontsize=8, facecolor=CARD_BG, edgecolor=BORDER,
-                          labelcolor=TEXT_BRIGHT, loc="upper left")
-            ax_div.set_ylabel("Indexed (Base = 100)", fontsize=9, color=TEXT_DIM)
+            ax.axhline(100, color=T("text_muted"), linewidth=0.8, linestyle="--", alpha=0.5)
+            ax.set_xticks(x_pos)
+            ax.set_xticklabels(x_labels)
+            ax.legend(fontsize=6, facecolor=T("card_bg"), edgecolor=T("border"),
+                      labelcolor=T("text_bright"), loc="upper left")
+            ax.set_ylabel("Indexed (100)", fontsize=8, color=T("text_dim"))
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=6, integer=False))
 
-            # Value Signal KPI
             rev_change = (rev_vals[-1] - rev_vals[-2]) / rev_vals[-2] * 100 if rev_vals[-2] != 0 else 0
             price_change = (price_vals[-1] - price_vals[-2]) / price_vals[-2] * 100 if price_vals[-2] != 0 else 0
             gap = rev_change - price_change
 
             if gap > 10:
-                signal_text = "\u25B2 Undervalued"
-                signal_color = NEON_GREEN
+                signal_text, signal_color = "\u25B2 Undervalued", NEON_GREEN
             elif gap < -10:
-                signal_text = "\u25BC Overvalued"
-                signal_color = NEON_RED
+                signal_text, signal_color = "\u25BC Overvalued", NEON_RED
             else:
-                signal_text = "\u25C6 Fair Value"
-                signal_color = NEON_AMBER
+                signal_text, signal_color = "\u25C6 Fair Value", NEON_AMBER
 
             note = f"Rev {rev_change:+.1f}%  vs  Price {price_change:+.1f}%"
-            ax_div.annotate(note,
-                            xy=(x_pos[-1], max(rev_idx[-1], price_idx[-1]) + 2),
-                            fontsize=8, color=TEXT_BRIGHT, ha="right",
-                            bbox=dict(boxstyle="round,pad=0.3",
-                                      facecolor=CARD_BG, edgecolor=BORDER, alpha=0.9))
+            ax.annotate(note,
+                        xy=(x_pos[-1], max(rev_idx[-1], price_idx[-1]) + 2),
+                        fontsize=7, color=T("text_bright"), ha="right",
+                        bbox=dict(boxstyle="round,pad=0.3",
+                                  facecolor=T("card_bg"), edgecolor=T("border"), alpha=0.9))
 
             self._kpi_labels["signal"].configure(text=signal_text, text_color=signal_color)
             self._kpi_cards["signal"].configure(border_color=signal_color)
-
-        elif len(common_years) == 1:
-            ax_div.text(0.5, 0.5,
-                        "Only 1 year of overlapping data \u2014 need at least 2 to compare trends",
-                        ha="center", va="center", fontsize=10, color=TEXT_MUTED,
-                        transform=ax_div.transAxes)
-            self._kpi_labels["signal"].configure(text="\u2014", text_color=TEXT_DIM)
         else:
-            ax_div.text(0.5, 0.5,
-                        "No overlapping revenue & price data available",
-                        ha="center", va="center", fontsize=10, color=TEXT_MUTED,
-                        transform=ax_div.transAxes)
-            self._kpi_labels["signal"].configure(text="\u2014", text_color=TEXT_DIM)
+            ax.text(0.5, 0.5, "Not enough overlapping data",
+                    ha="center", va="center", fontsize=10, color=T("text_muted"),
+                    transform=ax.transAxes)
+            self._kpi_labels["signal"].configure(text="\u2014", text_color=T("text_dim"))
 
         name = self._stock_details.get(selected, {}).get("name", selected)
-        ax_div.set_title(f"Value Divergence \u2014 {name}",
-                         fontsize=11, color=NEON_CYAN, pad=12,
+        period_label = self._candle_period.upper().replace("MO", "M")
+        ax.set_title(f"Value Divergence \u2014 {name} ({period_label})",
+                     fontsize=10, color=NEON_CYAN, pad=8,
+                     fontfamily="Consolas", fontweight="bold")
+
+    # ══════════════════════════════════════════════════════════
+    #  CANDLESTICK CHART
+    # ══════════════════════════════════════════════════════════
+
+    def _draw_candle(self, ax, symbol, period):
+        """Draw OHLC candlestick chart on the given axes."""
+        ax.clear()
+        self._style_axis(ax)
+
+        hist = self._candle_hist
+        if hist is None or hist.empty:
+            ax.text(0.5, 0.5, "No price history available",
+                    ha="center", va="center", fontsize=10, color=T("text_muted"),
+                    transform=ax.transAxes)
+            name = self._stock_details.get(symbol, {}).get("name", symbol)
+            ax.set_title(f"Price Action \u2014 {name}",
+                         fontsize=10, color=NEON_CYAN, pad=8,
                          fontfamily="Consolas", fontweight="bold")
+            return
 
-        fig.tight_layout(pad=2.0)
-        canvas = FigureCanvasTkAgg(fig, master=self._chart_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill="both", expand=True)
+        # Filter by period
+        period_days = {"1mo": 30, "3mo": 90, "6mo": 180,
+                       "1y": 365, "2y": 730, "3y": 1095, "4y": 1460}
+        days = period_days.get(period, 365)
+        cutoff = hist.index.max() - pd.Timedelta(days=days)
+        df = hist.loc[hist.index >= cutoff].copy()
 
-        canvas.mpl_connect('button_press_event', self._on_pie_click)
-        canvas.mpl_connect('motion_notify_event', self._on_pie_hover)
-        self._pie_canvas = canvas
-        self._pie_fig = fig
+        if df.empty:
+            ax.text(0.5, 0.5, "No data for this period",
+                    ha="center", va="center", fontsize=10, color=T("text_muted"),
+                    transform=ax.transAxes)
+            return
 
-        # Back button
-        back_btn = tk.Button(
-            self._chart_frame, text="\u2190  Back to Sector View",
-            font=("Segoe UI", 9), fg=NEON_CYAN, bg=CARD_BG,
-            activebackground=BORDER, activeforeground=NEON_CYAN,
-            relief="flat", padx=10, pady=4, cursor="hand2",
-            command=self._on_back_to_sector)
-        back_btn.place(relx=0.0, rely=0.0, x=8, y=8)
+        # For long periods, resample to weekly candles for readability
+        if days > 365:
+            df = df.resample('W').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min',
+                'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+        elif days > 90:
+            # Keep daily but thin labels
+            pass
 
-        self._go_btn.configure(state="normal")
-        n_peers = len(chart_tickers) - 1
-        self._status_var.set(f"{name} \u2014 {n_peers} peer(s) charted")
+        up_color = T("candle_up")
+        down_color = T("candle_down")
+
+        # Draw candles manually on the given axes
+        x_pos = np.arange(len(df))
+        opens = df['Open'].values
+        closes = df['Close'].values
+        highs = df['High'].values
+        lows = df['Low'].values
+
+        width = 0.6
+        for i in range(len(df)):
+            color = up_color if closes[i] >= opens[i] else down_color
+            body_bottom = min(opens[i], closes[i])
+            body_height = abs(closes[i] - opens[i])
+            # Wick
+            ax.plot([x_pos[i], x_pos[i]], [lows[i], highs[i]],
+                    color=color, linewidth=0.5, zorder=1)
+            # Body
+            ax.bar(x_pos[i], body_height, bottom=body_bottom, width=width,
+                   color=color, edgecolor=color, linewidth=0.3, zorder=2)
+
+        # X axis labels — show a few date ticks
+        n_ticks = min(8, len(df))
+        tick_indices = np.linspace(0, len(df) - 1, n_ticks, dtype=int)
+        ax.set_xticks(tick_indices)
+        ax.set_xticklabels([df.index[i].strftime("%b'%y") for i in tick_indices],
+                           rotation=30, fontsize=7)
+        ax.set_xlim(-1, len(df))
+
+        # Price labels
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"\u20b9{v:,.0f}"))
+        ax.tick_params(axis='y', labelsize=7)
+
+        name = self._stock_details.get(symbol, {}).get("name", symbol)
+        period_label = period.upper().replace("MO", "M")
+        ax.set_title(f"Price Action \u2014 {name} ({period_label})",
+                     fontsize=10, color=NEON_CYAN, pad=8,
+                     fontfamily="Consolas", fontweight="bold")
+
+    def _on_period_change(self, period):
+        """Switch ALL left charts to new timeframe — in-place redraw, no flash."""
+        self._candle_period = period
+
+        if (self._left_fig is not None and self._left_canvas is not None
+                and self._last_analyze_args is not None):
+            (selected, same_industry, chart_tickers, revenue_data,
+             price_yearly, _, revenue_quarterly, price_quarterly) = \
+                self._last_analyze_args
+
+            # Redraw all three subplots in-place
+            self._draw_revenue(self._rev_ax, selected, chart_tickers,
+                               revenue_data, revenue_quarterly)
+            self._draw_divergence(self._div_ax, selected, revenue_data,
+                                  price_yearly, revenue_quarterly, price_quarterly)
+            self._draw_candle(self._candle_ax, selected, period)
+
+            self._left_fig.tight_layout(pad=1.5)
+            self._left_canvas.draw_idle()
+
+            # Rebuild timeline buttons to update active state
+            if hasattr(self, '_tf_frame') and self._tf_frame.winfo_exists():
+                for w in self._tf_frame.winfo_children():
+                    w.destroy()
+                tk.Label(self._tf_frame, text="Timeline:", font=("Consolas", 8),
+                         fg=T("text_dim"), bg=T("deep_bg")).pack(side="left", padx=(4, 4))
+                for plabel, pval in [("1M", "1mo"), ("3M", "3mo"), ("6M", "6mo"),
+                                     ("1Y", "1y"), ("2Y", "2y"), ("3Y", "3y"), ("4Y", "4y")]:
+                    is_active = (pval == self._candle_period)
+                    btn = tk.Button(
+                        self._tf_frame, text=plabel,
+                        font=("Consolas", 8, "bold" if is_active else "normal"),
+                        fg=NEON_CYAN if is_active else T("text_dim"),
+                        bg=T("card_bg") if is_active else T("deep_bg"),
+                        activebackground=T("card_bg"), activeforeground=NEON_CYAN,
+                        relief="flat", padx=6, pady=2, cursor="hand2",
+                        command=lambda p=pval: self._on_period_change(p))
+                    btn.pack(side="left", padx=1)
 
 
 if __name__ == "__main__":
