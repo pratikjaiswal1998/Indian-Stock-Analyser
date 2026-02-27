@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indian Stock Analyser — NSE Screener</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+</head>
+<body class="dark">
+
+<!-- ── HEADER ─────────────────────────────────── -->
+<header id="header">
+    <div class="header-left">
+        <h1>Stock Picker <span class="subtitle">NSE Industry Screener</span></h1>
+    </div>
+    <div class="header-right">
+        <label class="theme-toggle" title="Toggle theme">
+            <span class="icon" id="theme-icon">&#127769;</span>
+            <input type="checkbox" id="theme-switch">
+            <span class="slider"></span>
+        </label>
+    </div>
+</header>
+
+<!-- ── MAIN LAYOUT ────────────────────────────── -->
+<div id="app-container">
+
+    <!-- LEFT SIDEBAR -->
+    <aside id="sidebar">
+        <div class="control-group">
+            <label>Sector</label>
+            <select id="sector-select"><option>Loading...</option></select>
+        </div>
+        <div class="control-group">
+            <label>Industry</label>
+            <select id="industry-select"><option>Select sector first</option></select>
+        </div>
+        <div class="control-group">
+            <label>Sort By</label>
+            <select id="sort-select">
+                <option value="divergence">Value Divergence</option>
+                <option value="mcap">Market Cap</option>
+                <option value="pe">P/E Ratio (low)</option>
+                <option value="pb">P/B Ratio (low)</option>
+                <option value="dividend">Dividend Yield (high)</option>
+                <option value="ev">EV/EBITDA (low)</option>
+            </select>
+            <button id="sort-info-btn" class="icon-btn" title="What is this?">?</button>
+        </div>
+        <button id="load-btn" class="primary-btn">Load Stocks</button>
+        <div id="stock-list" class="stock-list"></div>
+        <div id="status-bar" class="status-bar">Ready</div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main id="main-content">
+        <!-- KPI CARDS -->
+        <div id="kpi-row">
+            <div class="kpi-card" id="kpi-industry"><div class="kpi-label">Industry</div><div class="kpi-value">—</div></div>
+            <div class="kpi-card" id="kpi-ind-size"><div class="kpi-label">Industry Size</div><div class="kpi-value">—</div></div>
+            <div class="kpi-card" id="kpi-mcap"><div class="kpi-label">Market Cap</div><div class="kpi-value">—</div></div>
+            <div class="kpi-card" id="kpi-price"><div class="kpi-label">Price</div><div class="kpi-value">—</div></div>
+            <div class="kpi-card" id="kpi-pe"><div class="kpi-label">P/E</div><div class="kpi-value">—</div></div>
+            <div class="kpi-card" id="kpi-signal"><div class="kpi-label">Signal</div><div class="kpi-value">—</div></div>
+        </div>
+
+        <!-- CHART AREA -->
+        <div id="chart-area">
+            <div id="charts-left">
+                <div id="chart-revenue" class="chart-box"></div>
+                <div id="chart-divergence" class="chart-box"></div>
+                <div id="chart-candle" class="chart-box"></div>
+                <!-- Timeline buttons -->
+                <div id="timeline-bar">
+                    <span class="tl-label">Timeline:</span>
+                    <button class="tl-btn" data-period="1mo">1M</button>
+                    <button class="tl-btn" data-period="3mo">3M</button>
+                    <button class="tl-btn" data-period="6mo">6M</button>
+                    <button class="tl-btn active" data-period="1y">1Y</button>
+                    <button class="tl-btn" data-period="2y">2Y</button>
+                    <button class="tl-btn" data-period="3y">3Y</button>
+                    <button class="tl-btn" data-period="4y">4Y</button>
+                </div>
+            </div>
+            <div id="charts-right">
+                <div id="chart-pie" class="chart-box"></div>
+            </div>
+        </div>
+
+        <!-- BACK BUTTON (hidden by default) -->
+        <button id="back-btn" class="back-btn" style="display:none;">&#8592; Back to Sector View</button>
+    </main>
+
+    <!-- NEWS PANEL -->
+    <aside id="news-panel" class="news-panel" style="display:none;">
+        <div class="news-header">
+            <h3>News Intelligence</h3>
+            <button id="news-close" class="icon-btn">&times;</button>
+        </div>
+        <div id="news-list" class="news-list"></div>
+    </aside>
+</div>
+
+<!-- SORT EXPLANATION MODAL -->
+<div id="sort-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <button class="modal-close" id="sort-modal-close">&times;</button>
+        <h3 id="sort-modal-title"></h3>
+        <p id="sort-modal-body"></p>
+    </div>
+</div>
+
+<!-- NEWS POPUP MODAL -->
+<div id="news-modal" class="modal" style="display:none;">
+    <div class="modal-content news-modal-content">
+        <button class="modal-close" id="news-modal-close">&times;</button>
+        <div class="sentiment-badge" id="news-modal-badge"></div>
+        <h3 id="news-modal-title"></h3>
+        <p id="news-modal-impact"></p>
+    </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay" style="display:none;">
+    <div class="spinner"></div>
+    <p id="loading-text">Loading...</p>
+</div>
+
+<script src="js/theme.js"></script>
+<script src="js/sentiment.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
