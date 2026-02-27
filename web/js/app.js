@@ -1,7 +1,7 @@
 /* ── Main App Logic ───────────────────────────── */
 const App = (() => {
-    // !! UPDATE THIS after connecting Vercel !!
-    const API_BASE = 'https://indian-stock-analyser.vercel.app';
+    // Same domain on Vercel — use empty string for relative paths
+    const API_BASE = '';
 
     // State
     let industries = {};
