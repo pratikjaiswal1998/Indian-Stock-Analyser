@@ -12,6 +12,7 @@
 <!-- ── HEADER ─────────────────────────────────── -->
 <header id="header">
     <div class="header-left">
+        <button id="menu-btn" class="menu-btn" title="Menu">&#9776;</button>
         <h1>Stock Picker <span class="subtitle">NSE Industry Screener</span></h1>
     </div>
     <div class="header-right">
@@ -55,6 +56,8 @@
 
     <!-- MAIN CONTENT -->
     <main id="main-content">
+        <!-- BACK BUTTON -->
+        <button id="back-btn" class="back-btn" style="display:none;">&#8592; Back to Sector View</button>
         <!-- KPI CARDS -->
         <div id="kpi-row">
             <div class="kpi-card" id="kpi-industry"><div class="kpi-label">Industry</div><div class="kpi-value">—</div></div>
@@ -88,8 +91,6 @@
             </div>
         </div>
 
-        <!-- BACK BUTTON (hidden by default) -->
-        <button id="back-btn" class="back-btn" style="display:none;">&#8592; Back to Sector View</button>
     </main>
 
     <!-- NEWS PANEL -->

@@ -37,7 +37,15 @@ const App = (() => {
             setStatus('Failed to load industries: ' + e.message);
         }
 
+        // Mobile sidebar — start open so user can pick sector
+        if (window.innerWidth <= 900) {
+            document.getElementById('sidebar').classList.add('open');
+        }
+
         // Event listeners
+        document.getElementById('menu-btn').addEventListener('click', () => {
+            document.getElementById('sidebar').classList.toggle('open');
+        });
         document.getElementById('sector-select').addEventListener('change', onSectorChange);
         document.getElementById('industry-select').addEventListener('change', () => {});
         document.getElementById('load-btn').addEventListener('click', onLoadStocks);
@@ -291,6 +299,11 @@ const App = (() => {
 
             // News panel
             showNews(newsResp.articles || [], dataResp.financials || {});
+
+            // On mobile, collapse sidebar after analysis
+            if (window.innerWidth <= 900) {
+                document.getElementById('sidebar').classList.remove('open');
+            }
 
             hideLoading();
             setStatus(`${info.name || symbol} \u2014 ${peers.length} peer(s) charted`);

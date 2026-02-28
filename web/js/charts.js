@@ -185,44 +185,49 @@ const Charts = (() => {
             return { signal: null };
         }
 
-        // Index to 100
-        const revBase = revVals[0] || 1;
-        const priceBase = priceVals[0] || 1;
-        const revIdx = revVals.map(v => v / revBase * 100);
-        const priceIdx = priceVals.map(v => v / priceBase * 100);
+        // Dual Y-axis: left = price (₹), right = revenue (₹ Cr)
+        const revCr = revVals.map(v => v / 1e7);
 
         const traces = [
             {
-                x: xLabels, y: revIdx, type: 'scatter', mode: 'lines+markers',
-                name: 'Revenue Index', line: { color: '#00f0ff', width: 2.5 },
-                marker: { size: 7, symbol: 'circle' },
+                x: xLabels, y: priceVals, type: 'scatter', mode: 'lines+markers',
+                name: 'Avg Price (\u20b9)', line: { color: '#00ff88', width: 2.5 },
+                marker: { size: 7, symbol: 'diamond' },
+                yaxis: 'y',
+                hovertemplate: '%{x}<br>\u20b9%{y:,.1f}<extra>Price</extra>',
             },
             {
-                x: xLabels, y: priceIdx, type: 'scatter', mode: 'lines+markers',
-                name: 'Avg Price Index', line: { color: '#00ff88', width: 2.5 },
-                marker: { size: 7, symbol: 'diamond' },
+                x: xLabels, y: revCr, type: 'scatter', mode: 'lines+markers',
+                name: 'Revenue (\u20b9 Cr)', line: { color: '#00f0ff', width: 2.5 },
+                marker: { size: 7, symbol: 'circle' },
+                yaxis: 'y2',
+                hovertemplate: '%{x}<br>\u20b9%{y:,.0f} Cr<extra>Revenue</extra>',
             },
         ];
 
-        // Fill between
-        traces.push({
-            x: [...xLabels, ...xLabels.slice().reverse()],
-            y: [...revIdx, ...priceIdx.slice().reverse()],
-            type: 'scatter', fill: 'toself',
-            fillcolor: 'rgba(0, 255, 136, 0.08)',
-            line: { color: 'transparent' },
-            showlegend: false, hoverinfo: 'skip',
-        });
-
         const pLabel = period.toUpperCase().replace('MO', 'M');
         const name = (stockDetails[selected]?.name || selected).substring(0, 20);
+        const t = Theme.plotlyLayout();
         const layout = _layout({
             title: { text: `Value Divergence \u2014 ${name} (${pLabel})`, font: { size: 12, color: '#00f0ff' } },
-            yaxis: { title: 'Indexed (100)', gridcolor: Theme.plotlyLayout().gridcolor },
-            margin: { l: 50, r: 10, t: 35, b: 30 },
+            yaxis: {
+                title: 'Price (\u20b9)',
+                titlefont: { color: '#00ff88', size: 11 },
+                tickfont: { color: '#00ff88' },
+                gridcolor: t.gridcolor,
+                zerolinecolor: t.gridcolor,
+                side: 'left',
+            },
+            yaxis2: {
+                title: 'Revenue (\u20b9 Cr)',
+                titlefont: { color: '#00f0ff', size: 11 },
+                tickfont: { color: '#00f0ff' },
+                overlaying: 'y',
+                side: 'right',
+                showgrid: false,
+            },
+            margin: { l: 60, r: 65, t: 35, b: 30 },
             legend: { font: { size: 9 }, x: 0, y: 1.15, orientation: 'h' },
-            shapes: [{ type: 'line', y0: 100, y1: 100, x0: 0, x1: 1, xref: 'paper',
-                       line: { color: '#475569', width: 1, dash: 'dash' } }],
         });
 
         Plotly.newPlot(containerId, traces, layout, _config());

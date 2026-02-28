@@ -61,6 +61,12 @@ body {
     height: 48px;
 }
 
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 #header h1 {
     font-family: 'Consolas', monospace;
     font-size: 16px;
@@ -73,6 +79,21 @@ body {
     color: var(--text-dim);
     font-weight: 400;
     margin-left: 8px;
+}
+
+/* Hamburger menu button — hidden on desktop */
+.menu-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: var(--card-bg);
+    color: var(--neon-cyan);
+    border: 1px solid var(--border);
+    font-size: 20px;
+    width: 36px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
 }
 
 /* Theme toggle switch */
@@ -333,9 +354,6 @@ select:focus { border-color: var(--neon-cyan); }
 }
 
 .back-btn {
-    position: absolute;
-    top: 58px;
-    left: 280px;
     background: var(--card-bg);
     color: var(--neon-cyan);
     border: 1px solid var(--border);
@@ -344,6 +362,7 @@ select:focus { border-color: var(--neon-cyan); }
     font-size: 12px;
     cursor: pointer;
     z-index: 10;
+    align-self: flex-start;
 }
 .back-btn:hover { border-color: var(--neon-cyan); }
 
@@ -504,3 +523,88 @@ select:focus { border-color: var(--neon-cyan); }
 }
 #chart-area.pie-only #charts-left { display: none; }
 #chart-area.pie-only #charts-right { max-width: 100%; }
+
+/* ── MOBILE RESPONSIVE ───────────────────────── */
+@media (max-width: 900px) {
+    body {
+        overflow: auto;
+        height: auto;
+    }
+
+    #header {
+        padding: 8px 12px;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+    }
+
+    #header .subtitle { display: none; }
+
+    .menu-btn { display: flex; }
+
+    #app-container {
+        flex-direction: column;
+        height: auto;
+        min-height: calc(100vh - 48px);
+        overflow: visible;
+    }
+
+    #sidebar {
+        display: none;
+        width: 100%;
+        min-width: unset;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+
+    #sidebar.open { display: flex; }
+
+    .stock-list { max-height: 200px; }
+
+    #main-content {
+        overflow: visible;
+        padding: 8px;
+        gap: 8px;
+    }
+
+    #kpi-row {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+    }
+
+    #chart-area {
+        grid-template-columns: 1fr;
+        flex: none;
+    }
+
+    #chart-area.pie-only { grid-template-columns: 1fr; }
+
+    .chart-box { min-height: 280px; }
+
+    #timeline-bar { flex-wrap: wrap; }
+
+    .news-panel {
+        width: 100%;
+        min-width: unset;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        max-height: 400px;
+    }
+
+    .back-btn { margin-bottom: 4px; }
+}
+
+@media (max-width: 500px) {
+    #header h1 { font-size: 13px; }
+
+    #kpi-row { grid-template-columns: repeat(2, 1fr); }
+
+    .kpi-value { font-size: 12px; }
+    .kpi-card { padding: 6px 8px; }
+
+    .chart-box { min-height: 250px; }
+
+    .tl-btn { padding: 4px 8px; font-size: 10px; }
+}
