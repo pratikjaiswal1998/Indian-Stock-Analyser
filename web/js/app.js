@@ -149,6 +149,7 @@ const App = (() => {
 
             document.getElementById('chart-area').classList.add('pie-only');
             document.getElementById('back-btn').style.display = 'none';
+            document.getElementById('news-panel').style.display = 'none';
             pieLevel = 1;
 
             Charts.renderPie('chart-pie', items, `Market Share \u2014 ${sector}`, (item) => {
@@ -210,8 +211,26 @@ const App = (() => {
                 if (item.symbol) analyzeStock(item.symbol);
             });
 
+            // Show industry KPIs
+            const totalMcap = stockList.reduce((sum, s) => sum + (s.marketCap || 0), 0);
+            setKPI('industry', industry);
+            setKPI('ind-size', fmtInr(totalMcap));
+            setKPI('mcap', `${stockList.length} stocks`);
+            setKPI('price', '\u2014');
+            setKPI('pe', '\u2014');
+            setKPI('signal', '\u2014');
+
+            // Show back button to return to sector pie
+            document.getElementById('back-btn').style.display = 'block';
+            document.getElementById('back-btn').textContent = '\u2190 Back to Sector';
+
+            // Fetch industry news in background
+            apiFetch(`/api/news?stock=${encodeURIComponent(industry)}`)
+                .then(newsResp => showNews(newsResp.articles || [], {}))
+                .catch(() => {});
+
             hideLoading();
-            setStatus(`${industry} \u2014 ${stockList.length} stocks loaded`);
+            setStatus(`${industry} \u2014 ${stockList.length} stocks loaded \u2014 click a stock to analyze`);
         } catch (e) {
             hideLoading();
             setStatus('Error: ' + e.message);
@@ -304,9 +323,9 @@ const App = (() => {
             // Switch to full chart layout
             document.getElementById('chart-area').classList.remove('pie-only');
             document.getElementById('back-btn').style.display = 'block';
+            document.getElementById('back-btn').textContent = '\u2190 Back to Industry';
 
             const allTickers = [symbol, ...peers];
-            currentPeriod = '1y';
             updateTimelineButtons();
 
             // Render all charts
@@ -429,26 +448,53 @@ const App = (() => {
 
     // ── BACK BUTTON ─────────────────────────────
     function onBackToSector() {
+        // If viewing a stock → go back to industry pie
+        if (analyzeData && currentSymbol) {
+            document.getElementById('chart-area').classList.add('pie-only');
+            analyzeData = null;
+            currentSymbol = null;
+
+            // Re-render industry stocks pie
+            const industry = document.getElementById('industry-select').value;
+            if (industry && stockList.length > 0) {
+                const pieItems = stockList
+                    .filter(s => s.marketCap > 0)
+                    .map(s => ({ label: (s.name || s.symbol).substring(0, 18), value: s.marketCap / 1e7, symbol: s.symbol }))
+                    .sort((a, b) => b.value - a.value)
+                    .slice(0, 15);
+                Charts.renderPie('chart-pie', pieItems, `Market Share \u2014 ${industry}`, (item) => {
+                    if (item.symbol) analyzeStock(item.symbol);
+                });
+
+                // Restore industry KPIs
+                const totalMcap = stockList.reduce((sum, s) => sum + (s.marketCap || 0), 0);
+                setKPI('industry', industry);
+                setKPI('ind-size', fmtInr(totalMcap));
+                setKPI('mcap', `${stockList.length} stocks`);
+                setKPI('price', '\u2014');
+                setKPI('pe', '\u2014');
+                setKPI('signal', '\u2014');
+            }
+
+            document.getElementById('back-btn').textContent = '\u2190 Back to Sector';
+            pieLevel = 2;
+            setStatus(`${industry} \u2014 click a stock to analyze`);
+            return;
+        }
+
+        // If viewing industry pie → go back to sector pie
         document.getElementById('chart-area').classList.add('pie-only');
         document.getElementById('back-btn').style.display = 'none';
         document.getElementById('news-panel').style.display = 'none';
-        analyzeData = null;
-        currentSymbol = null;
+        stockList = [];
+        stockDetails = {};
+        document.getElementById('stock-list').innerHTML = '';
 
-        // Re-render industry pie
-        const industry = document.getElementById('industry-select').value;
-        if (industry && stockList.length > 0) {
-            const pieItems = stockList
-                .filter(s => s.marketCap > 0)
-                .map(s => ({ label: (s.name || s.symbol).substring(0, 18), value: s.marketCap / 1e7, symbol: s.symbol }))
-                .sort((a, b) => b.value - a.value)
-                .slice(0, 15);
-            Charts.renderPie('chart-pie', pieItems, `Market Share \u2014 ${industry}`, (item) => {
-                if (item.symbol) analyzeStock(item.symbol);
-            });
+        const sector = document.getElementById('sector-select').value;
+        if (sector) {
+            onSectorChange();
         }
 
-        // Reset KPIs
         ['industry', 'ind-size', 'mcap', 'price', 'pe', 'signal'].forEach(k => setKPI(k, '\u2014'));
     }
 
