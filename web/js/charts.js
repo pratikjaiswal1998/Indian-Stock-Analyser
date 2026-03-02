@@ -30,17 +30,12 @@ const Charts = (() => {
         }, overrides);
     }
 
-    function _config(opts = {}) {
-        const mobile = _isMobile();
-        const isCandlestick = opts.candlestick || false;
+    function _config() {
         return {
             responsive: true,
-            displayModeBar: mobile && isCandlestick,
+            displayModeBar: false,
             displaylogo: false,
             scrollZoom: false,
-            modeBarButtonsToRemove: mobile ? [
-                'sendDataToCloud', 'toImage', 'lasso2d', 'select2d', 'toggleSpikelines'
-            ] : [],
         };
     }
 
@@ -51,14 +46,16 @@ const Charts = (() => {
         const values = items.map(i => i.value);
         const colors = items.map((_, i) => COLORS[i % COLORS.length]);
 
+        const mobile = _isMobile();
         const trace = {
             type: 'pie',
             labels, values,
             marker: { colors, line: { color: Theme.dark() ? '#0a0e1a' : '#f0f6ff', width: 2 } },
-            textinfo: 'label+percent',
-            textfont: { size: 10 },
+            textinfo: mobile ? 'percent' : 'label+percent',
+            textfont: { size: mobile ? 9 : 10 },
             hovertemplate: '%{label}<br>\u20b9%{value:,.0f} Cr<br>%{percent}<extra></extra>',
             hole: 0.0,
+            textposition: 'auto',
         };
 
         const mobile = _isMobile();
@@ -143,8 +140,9 @@ const Charts = (() => {
         const gran = (useQuarterly && quarterlyRevenue && Object.keys(quarterlyRevenue).length > 0) ? 'Quarterly' : 'Annual';
         const pLabel = period.toUpperCase().replace('MO', 'M');
         const mobile = _isMobile();
+        const revTitle = mobile ? `Revenue (${pLabel}, ${gran})` : `Revenue \u2014 Selected vs Peers (${pLabel}, ${gran})`;
         const layout = _layout({
-            title: { text: `Revenue \u2014 Selected vs Peers (${pLabel}, ${gran})`, font: { size: 12, color: Theme.plotlyLayout().accent } },
+            title: { text: revTitle, font: { size: 12, color: Theme.plotlyLayout().accent } },
             yaxis: { title: 'Revenue (\u20b9 Cr)', gridcolor: Theme.plotlyLayout().gridcolor },
             margin: mobile ? { l: 50, r: 15, t: 35, b: 35 } : { l: 60, r: 10, t: 35, b: 30 },
             legend: { font: { size: 9 }, x: 0, y: 1.15, orientation: 'h' },
@@ -227,11 +225,13 @@ const Charts = (() => {
         ];
 
         const pLabel = period.toUpperCase().replace('MO', 'M');
-        const name = (stockDetails[selected]?.name || selected).substring(0, 20);
-        const t = Theme.plotlyLayout();
         const mobile = _isMobile();
+        const nameLen = mobile ? 12 : 20;
+        const name = (stockDetails[selected]?.name || selected).substring(0, nameLen);
+        const t = Theme.plotlyLayout();
+        const divTitle = mobile ? `Divergence \u2014 ${name} (${pLabel})` : `Value Divergence \u2014 ${name} (${pLabel})`;
         const layout = _layout({
-            title: { text: `Value Divergence \u2014 ${name} (${pLabel})`, font: { size: 12, color: Theme.plotlyLayout().accent } },
+            title: { text: divTitle, font: { size: 12, color: Theme.plotlyLayout().accent } },
             yaxis: {
                 title: 'Price (\u20b9)',
                 titlefont: { color: priceColor, size: 11 },
@@ -308,18 +308,19 @@ const Charts = (() => {
             decreasing: { line: { color: Theme.dark() ? '#ff3366' : '#dc2626' } },
         };
 
-        const name = (stockDetails[symbol]?.name || symbol).substring(0, 20);
-        const pLabel = period.toUpperCase().replace('MO', 'M');
         const mobile = _isMobile();
+        const nameLen = mobile ? 14 : 20;
+        const name = (stockDetails[symbol]?.name || symbol).substring(0, nameLen);
+        const pLabel = period.toUpperCase().replace('MO', 'M');
         const layout = _layout({
-            title: { text: `Price Action \u2014 ${name} (${pLabel})`, font: { size: 12, color: Theme.plotlyLayout().accent } },
+            title: { text: `Price \u2014 ${name} (${pLabel})`, font: { size: 12, color: Theme.plotlyLayout().accent } },
             xaxis: { rangeslider: { visible: false }, gridcolor: Theme.plotlyLayout().gridcolor },
             yaxis: { title: 'Price (\u20b9)', gridcolor: Theme.plotlyLayout().gridcolor },
             margin: mobile ? { l: 50, r: 15, t: 35, b: 35 } : { l: 55, r: 10, t: 35, b: 30 },
             showlegend: false,
         });
 
-        Plotly.newPlot(containerId, [trace], layout, _config({ candlestick: true }));
+        Plotly.newPlot(containerId, [trace], layout, _config());
     }
 
     function _weeklyResample(data) {

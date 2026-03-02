@@ -205,6 +205,8 @@ body.light .primary-btn { color: #ffffff; }
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+.control-group .icon-btn {
     position: absolute;
     right: 0;
     top: 0;
@@ -390,6 +392,10 @@ body.light .primary-btn { color: #ffffff; }
     align-items: center;
     padding: 10px 14px;
     border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.news-header .drag-handle {
+    flex-basis: 100%;
 }
 .news-header h3 {
     font-size: 13px;
@@ -751,13 +757,14 @@ button, select, .stock-item, .news-item, .theme-toggle {
     }
     #chart-area.pie-only { grid-template-columns: 1fr; }
 
+    #charts-left { gap: 16px; }
     .chart-box {
         min-height: 240px;
         touch-action: pan-y;
     }
     #chart-candle { min-height: 280px; }
-    #charts-right { margin-top: 8px; }
-    #charts-right .chart-box { min-height: 200px; }
+    #charts-right { margin-top: 16px; }
+    #charts-right .chart-box { min-height: 220px; }
 
     /* Scrollable timeline strip */
     #timeline-bar {
