@@ -58,7 +58,6 @@ const Charts = (() => {
             textposition: 'auto',
         };
 
-        const mobile = _isMobile();
         const layout = _layout({
             title: { text: title, font: { size: 13, color: Theme.plotlyLayout().accent } },
             margin: { l: 20, r: 20, t: 50, b: 20 },
