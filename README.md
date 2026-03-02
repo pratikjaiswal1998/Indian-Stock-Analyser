@@ -1,5 +1,7 @@
 # Indian Stock Analyser
 
+**[Live App](https://indian-stock-analyser.vercel.app/)**
+
 A desktop NSE stock screener with value-based analysis, interactive charts, and real-time news intelligence. Built with Python, customtkinter, and matplotlib.
 
 ## Features
