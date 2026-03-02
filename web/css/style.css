@@ -375,6 +375,42 @@ body.light .primary-btn { color: #ffffff; }
 }
 .back-btn:hover { border-color: var(--neon-cyan); }
 
+/* ── SWIPE INDICATOR ─────────────────────────── */
+.swipe-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 6px 0;
+}
+.swipe-label {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: 'Consolas', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+    text-align: center;
+}
+.swipe-arrow {
+    background: var(--card-bg);
+    color: var(--neon-cyan);
+    border: 1px solid var(--border);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+.swipe-arrow:hover { border-color: var(--neon-cyan); }
+.swipe-arrow:active { transform: scale(0.9); opacity: 0.7; }
+
 /* ── NEWS PANEL ──────────────────────────────── */
 .news-panel {
     width: 320px;
@@ -834,6 +870,16 @@ button, select, .stock-item, .news-item, .theme-toggle {
         align-items: center;
         padding: 8px 16px;
         font-size: 13px;
+    }
+
+    .swipe-arrow {
+        width: 44px;
+        height: 44px;
+        font-size: 18px;
+    }
+    .swipe-label {
+        font-size: 13px;
+        max-width: 180px;
     }
 
     .empty-state { padding: 30px 16px; }

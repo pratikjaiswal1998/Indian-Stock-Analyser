@@ -11,6 +11,7 @@ const App = (() => {
     let analyzeData = null;   // last fetched analyze response
     let currentPeriod = '1y';
     let pieLevel = 0;         // 0=none, 1=sector, 2=industry
+    let pieOrder = [];        // symbols in pie chart order (mcap desc)
 
     const SORT_EXPLANATIONS = {
         divergence: "Value Divergence compares a stock's revenue growth to its price growth. Higher score = more undervalued (revenue grew faster than price).",
@@ -74,13 +75,15 @@ const App = (() => {
             });
         });
 
-        // Escape key closes modals
+        // Escape key closes modals, arrow keys navigate stocks
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 ['sort-modal', 'news-modal'].forEach(id => {
                     document.getElementById(id).style.display = 'none';
                 });
             }
+            if (e.key === 'ArrowLeft') navigateStock(-1);
+            if (e.key === 'ArrowRight') navigateStock(1);
         });
 
         // Sidebar overlay — close drawer on tap
@@ -92,6 +95,13 @@ const App = (() => {
         if (window.innerWidth <= 900) {
             initNewsDrag();
         }
+
+        // Swipe navigation on charts
+        initChartSwipe();
+
+        // Arrow button clicks
+        document.getElementById('swipe-prev').addEventListener('click', () => navigateStock(-1));
+        document.getElementById('swipe-next').addEventListener('click', () => navigateStock(1));
     }
 
     // ── API HELPER ──────────────────────────────
@@ -206,6 +216,7 @@ const App = (() => {
 
             document.getElementById('chart-area').classList.add('pie-only');
             pieLevel = 2;
+            pieOrder = pieItems.map(i => i.symbol);
 
             Charts.renderPie('chart-pie', pieItems, `Market Share \u2014 ${industry}`, (item) => {
                 if (item.symbol) analyzeStock(item.symbol);
@@ -331,6 +342,9 @@ const App = (() => {
             // Render all charts
             renderAllCharts(symbol, allTickers);
 
+            // Update swipe indicator
+            updateSwipeIndicator(symbol);
+
             // Render pie (industry)
             const industry = info.industry;
             const pieStocks = sameInd
@@ -448,6 +462,9 @@ const App = (() => {
 
     // ── BACK BUTTON ─────────────────────────────
     function onBackToSector() {
+        // Hide swipe indicator
+        document.getElementById('swipe-indicator').style.display = 'none';
+
         // If viewing a stock → go back to industry pie
         if (analyzeData && currentSymbol) {
             document.getElementById('chart-area').classList.add('pie-only');
@@ -550,6 +567,61 @@ const App = (() => {
     function hideEmptyState() {
         const el = document.getElementById('empty-state');
         if (el) el.style.display = 'none';
+    }
+
+    // ── SWIPE NAVIGATION ──────────────────────────
+    function initChartSwipe() {
+        const el = document.getElementById('charts-left');
+        if (!el) return;
+
+        let startX = 0;
+        let startY = 0;
+
+        el.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+        }, { passive: true });
+
+        el.addEventListener('touchend', (e) => {
+            const dx = e.changedTouches[0].clientX - startX;
+            const dy = e.changedTouches[0].clientY - startY;
+
+            // Only trigger if horizontal swipe > 60px and more horizontal than vertical
+            if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                navigateStock(dx < 0 ? 1 : -1);
+            }
+        });
+    }
+
+    function navigateStock(direction) {
+        if (!currentSymbol || pieOrder.length < 2) return;
+        const idx = pieOrder.indexOf(currentSymbol);
+        if (idx === -1) return;
+
+        const nextIdx = idx + direction;
+        if (nextIdx < 0 || nextIdx >= pieOrder.length) return;
+
+        analyzeStock(pieOrder[nextIdx]);
+    }
+
+    function updateSwipeIndicator(symbol) {
+        const indicator = document.getElementById('swipe-indicator');
+        if (pieOrder.length < 2) {
+            indicator.style.display = 'none';
+            return;
+        }
+
+        const idx = pieOrder.indexOf(symbol);
+        if (idx === -1) {
+            indicator.style.display = 'none';
+            return;
+        }
+
+        const name = (stockDetails[symbol]?.name || symbol).substring(0, 20);
+        document.getElementById('swipe-label').textContent = `${name}  (${idx + 1}/${pieOrder.length})`;
+        document.getElementById('swipe-prev').style.visibility = idx === 0 ? 'hidden' : 'visible';
+        document.getElementById('swipe-next').style.visibility = idx === pieOrder.length - 1 ? 'hidden' : 'visible';
+        indicator.style.display = 'flex';
     }
 
     function initNewsDrag() {
