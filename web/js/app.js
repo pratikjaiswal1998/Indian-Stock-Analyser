@@ -73,6 +73,25 @@ const App = (() => {
                 if (e.target.classList.contains('modal')) e.target.style.display = 'none';
             });
         });
+
+        // Escape key closes modals
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                ['sort-modal', 'news-modal'].forEach(id => {
+                    document.getElementById(id).style.display = 'none';
+                });
+            }
+        });
+
+        // Sidebar overlay — close drawer on tap
+        document.getElementById('sidebar-overlay')?.addEventListener('click', () => {
+            document.getElementById('sidebar').classList.remove('open');
+        });
+
+        // News panel bottom-sheet drag (mobile)
+        if (window.innerWidth <= 900) {
+            initNewsDrag();
+        }
     }
 
     // ── API HELPER ──────────────────────────────
@@ -110,6 +129,7 @@ const App = (() => {
         stockList = [];
         stockDetails = {};
 
+        hideEmptyState();
         showLoading('Loading sector data...');
         try {
             const resp = await apiFetch(`/api/screen?type=sector&value=${encodeURIComponent(sector)}`);
@@ -153,6 +173,7 @@ const App = (() => {
             return;
         }
 
+        hideEmptyState();
         showLoading('Screening stocks...');
         try {
             const resp = await apiFetch(`/api/screen?type=industry&value=${encodeURIComponent(industry)}`);
@@ -236,6 +257,11 @@ const App = (() => {
     async function analyzeStock(symbol) {
         currentSymbol = symbol;
 
+        // Immediately close sidebar on mobile for instant feedback
+        if (window.innerWidth <= 900) {
+            document.getElementById('sidebar').classList.remove('open');
+        }
+
         // Highlight in list
         document.querySelectorAll('.stock-item').forEach(el => el.classList.remove('selected'));
         document.querySelectorAll('.stock-item').forEach(el => {
@@ -299,11 +325,6 @@ const App = (() => {
 
             // News panel
             showNews(newsResp.articles || [], dataResp.financials || {});
-
-            // On mobile, collapse sidebar after analysis
-            if (window.innerWidth <= 900) {
-                document.getElementById('sidebar').classList.remove('open');
-            }
 
             hideLoading();
             setStatus(`${info.name || symbol} \u2014 ${peers.length} peer(s) charted`);
@@ -472,10 +493,49 @@ const App = (() => {
     function showLoading(msg) {
         document.getElementById('loading-text').textContent = msg || 'Loading...';
         document.getElementById('loading-overlay').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
     }
 
     function hideLoading() {
         document.getElementById('loading-overlay').style.display = 'none';
+        document.body.style.overflow = '';
+    }
+
+    function hideEmptyState() {
+        const el = document.getElementById('empty-state');
+        if (el) el.style.display = 'none';
+    }
+
+    function initNewsDrag() {
+        const panel = document.getElementById('news-panel');
+        const header = panel.querySelector('.news-header');
+        let startY = 0;
+
+        header.addEventListener('touchstart', (e) => {
+            startY = e.touches[0].clientY;
+            panel.style.transition = 'none';
+        }, { passive: true });
+
+        header.addEventListener('touchmove', (e) => {
+            const dy = e.touches[0].clientY - startY;
+            if (panel.classList.contains('expanded')) {
+                if (dy > 0) panel.style.transform = `translateY(${dy}px)`;
+            } else {
+                const baseOffset = panel.offsetHeight - 120;
+                const newY = Math.max(0, baseOffset + dy);
+                panel.style.transform = `translateY(${newY}px)`;
+            }
+        }, { passive: true });
+
+        header.addEventListener('touchend', (e) => {
+            panel.style.transition = 'transform 0.3s ease';
+            const dy = e.changedTouches[0].clientY - startY;
+            if (Math.abs(dy) > 60) {
+                panel.classList.toggle('expanded', dy < 0);
+            }
+            panel.style.transform = '';
+            startY = 0;
+        });
     }
 
     return { init };

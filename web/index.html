@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Indian Stock Analyser — NSE Screener</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
@@ -53,9 +53,16 @@
         <div id="stock-list" class="stock-list"></div>
         <div id="status-bar" class="status-bar">Ready</div>
     </aside>
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
     <!-- MAIN CONTENT -->
     <main id="main-content">
+        <!-- EMPTY STATE -->
+        <div id="empty-state" class="empty-state">
+            <div class="empty-state-icon">&#128200;</div>
+            <p class="empty-state-title">Select a sector and industry to begin</p>
+            <p class="empty-state-sub">Pick a sector from the sidebar, then load stocks to see financial analysis.</p>
+        </div>
         <!-- BACK BUTTON -->
         <button id="back-btn" class="back-btn" style="display:none;">&#8592; Back to Sector View</button>
         <!-- KPI CARDS -->
@@ -96,6 +103,7 @@
     <!-- NEWS PANEL -->
     <aside id="news-panel" class="news-panel" style="display:none;">
         <div class="news-header">
+            <div class="drag-handle"></div>
             <h3>News Intelligence</h3>
             <button id="news-close" class="icon-btn">&times;</button>
         </div>

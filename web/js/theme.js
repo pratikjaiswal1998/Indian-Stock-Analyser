@@ -30,10 +30,11 @@ const Theme = (() => {
 
     function plotlyLayout() {
         return {
-            paper_bgcolor: isDark ? '#0a0e1a' : '#f0f2f5',
+            paper_bgcolor: isDark ? '#0a0e1a' : '#f0f6ff',
             plot_bgcolor: isDark ? '#111827' : '#ffffff',
-            font: { color: isDark ? '#e2e8f0' : '#1a1a2e', family: 'Consolas, monospace' },
-            gridcolor: isDark ? 'rgba(71,85,105,0.3)' : 'rgba(200,205,213,0.5)',
+            font: { color: isDark ? '#e2e8f0' : '#1a365d', family: 'Consolas, monospace' },
+            gridcolor: isDark ? 'rgba(71,85,105,0.3)' : 'rgba(37,99,235,0.12)',
+            accent: isDark ? '#00f0ff' : '#2563eb',
         };
     }
 

@@ -11,22 +11,37 @@ const Charts = (() => {
     let lastDivergenceData = null;
     let lastCandleData = null;
 
+    const _isMobile = () => window.matchMedia('(max-width: 900px)').matches
+        || 'ontouchstart' in window;
+
     function _layout(overrides = {}) {
         const t = Theme.plotlyLayout();
+        const mobile = _isMobile();
         return Object.assign({
             paper_bgcolor: t.paper_bgcolor,
             plot_bgcolor: t.plot_bgcolor,
             font: t.font,
-            margin: { l: 50, r: 20, t: 40, b: 40 },
+            margin: mobile ? { l: 45, r: 25, t: 40, b: 45 } : { l: 50, r: 20, t: 40, b: 40 },
             xaxis: { gridcolor: t.gridcolor, zerolinecolor: t.gridcolor },
             yaxis: { gridcolor: t.gridcolor, zerolinecolor: t.gridcolor },
+            hovermode: mobile ? 'closest' : 'x unified',
             showlegend: true,
             legend: { font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
         }, overrides);
     }
 
-    function _config() {
-        return { responsive: true, displayModeBar: false };
+    function _config(opts = {}) {
+        const mobile = _isMobile();
+        const isCandlestick = opts.candlestick || false;
+        return {
+            responsive: true,
+            displayModeBar: mobile && isCandlestick,
+            displaylogo: false,
+            scrollZoom: false,
+            modeBarButtonsToRemove: mobile ? [
+                'sendDataToCloud', 'toImage', 'lasso2d', 'select2d', 'toggleSpikelines'
+            ] : [],
+        };
     }
 
     // ── PIE CHART ──────────────────────────────
@@ -39,17 +54,19 @@ const Charts = (() => {
         const trace = {
             type: 'pie',
             labels, values,
-            marker: { colors, line: { color: Theme.dark() ? '#0a0e1a' : '#f0f2f5', width: 2 } },
+            marker: { colors, line: { color: Theme.dark() ? '#0a0e1a' : '#f0f6ff', width: 2 } },
             textinfo: 'label+percent',
             textfont: { size: 10 },
             hovertemplate: '%{label}<br>\u20b9%{value:,.0f} Cr<br>%{percent}<extra></extra>',
             hole: 0.0,
         };
 
+        const mobile = _isMobile();
         const layout = _layout({
-            title: { text: title, font: { size: 13, color: '#00f0ff' } },
+            title: { text: title, font: { size: 13, color: Theme.plotlyLayout().accent } },
             margin: { l: 20, r: 20, t: 50, b: 20 },
             showlegend: false,
+            dragmode: mobile ? false : undefined,
         });
 
         Plotly.newPlot(containerId, [trace], layout, _config()).then(() => {
@@ -125,11 +142,13 @@ const Charts = (() => {
 
         const gran = (useQuarterly && quarterlyRevenue && Object.keys(quarterlyRevenue).length > 0) ? 'Quarterly' : 'Annual';
         const pLabel = period.toUpperCase().replace('MO', 'M');
+        const mobile = _isMobile();
         const layout = _layout({
-            title: { text: `Revenue \u2014 Selected vs Peers (${pLabel}, ${gran})`, font: { size: 12, color: '#00f0ff' } },
+            title: { text: `Revenue \u2014 Selected vs Peers (${pLabel}, ${gran})`, font: { size: 12, color: Theme.plotlyLayout().accent } },
             yaxis: { title: 'Revenue (\u20b9 Cr)', gridcolor: Theme.plotlyLayout().gridcolor },
-            margin: { l: 60, r: 10, t: 35, b: 30 },
+            margin: mobile ? { l: 50, r: 15, t: 35, b: 35 } : { l: 60, r: 10, t: 35, b: 30 },
             legend: { font: { size: 9 }, x: 0, y: 1.15, orientation: 'h' },
+            dragmode: mobile ? false : undefined,
         });
 
         if (traces.length > 0) {
@@ -188,17 +207,19 @@ const Charts = (() => {
         // Dual Y-axis: left = price (₹), right = revenue (₹ Cr)
         const revCr = revVals.map(v => v / 1e7);
 
+        const accentColor = Theme.plotlyLayout().accent;
+        const priceColor = Theme.dark() ? '#00ff88' : '#16a34a';
         const traces = [
             {
                 x: xLabels, y: priceVals, type: 'scatter', mode: 'lines+markers',
-                name: 'Avg Price (\u20b9)', line: { color: '#00ff88', width: 2.5 },
+                name: 'Avg Price (\u20b9)', line: { color: priceColor, width: 2.5 },
                 marker: { size: 7, symbol: 'diamond' },
                 yaxis: 'y',
                 hovertemplate: '%{x}<br>\u20b9%{y:,.1f}<extra>Price</extra>',
             },
             {
                 x: xLabels, y: revCr, type: 'scatter', mode: 'lines+markers',
-                name: 'Revenue (\u20b9 Cr)', line: { color: '#00f0ff', width: 2.5 },
+                name: 'Revenue (\u20b9 Cr)', line: { color: accentColor, width: 2.5 },
                 marker: { size: 7, symbol: 'circle' },
                 yaxis: 'y2',
                 hovertemplate: '%{x}<br>\u20b9%{y:,.0f} Cr<extra>Revenue</extra>',
@@ -208,26 +229,28 @@ const Charts = (() => {
         const pLabel = period.toUpperCase().replace('MO', 'M');
         const name = (stockDetails[selected]?.name || selected).substring(0, 20);
         const t = Theme.plotlyLayout();
+        const mobile = _isMobile();
         const layout = _layout({
-            title: { text: `Value Divergence \u2014 ${name} (${pLabel})`, font: { size: 12, color: '#00f0ff' } },
+            title: { text: `Value Divergence \u2014 ${name} (${pLabel})`, font: { size: 12, color: Theme.plotlyLayout().accent } },
             yaxis: {
                 title: 'Price (\u20b9)',
-                titlefont: { color: '#00ff88', size: 11 },
-                tickfont: { color: '#00ff88' },
+                titlefont: { color: priceColor, size: 11 },
+                tickfont: { color: priceColor },
                 gridcolor: t.gridcolor,
                 zerolinecolor: t.gridcolor,
                 side: 'left',
             },
             yaxis2: {
                 title: 'Revenue (\u20b9 Cr)',
-                titlefont: { color: '#00f0ff', size: 11 },
-                tickfont: { color: '#00f0ff' },
+                titlefont: { color: accentColor, size: 11 },
+                tickfont: { color: accentColor },
                 overlaying: 'y',
                 side: 'right',
                 showgrid: false,
             },
-            margin: { l: 60, r: 65, t: 35, b: 30 },
+            margin: mobile ? { l: 50, r: 55, t: 35, b: 35 } : { l: 60, r: 65, t: 35, b: 30 },
             legend: { font: { size: 9 }, x: 0, y: 1.15, orientation: 'h' },
+            dragmode: mobile ? false : undefined,
         });
 
         Plotly.newPlot(containerId, traces, layout, _config());
@@ -239,9 +262,9 @@ const Charts = (() => {
         const gap = revChange - priceChange;
 
         let signal;
-        if (gap > 10) signal = { text: '\u25B2 Undervalued', color: '#00ff88' };
-        else if (gap < -10) signal = { text: '\u25BC Overvalued', color: '#ff3366' };
-        else signal = { text: '\u25C6 Fair Value', color: '#ffaa00' };
+        if (gap > 10) signal = { text: '\u25B2 Undervalued', color: Theme.dark() ? '#00ff88' : '#16a34a' };
+        else if (gap < -10) signal = { text: '\u25BC Overvalued', color: Theme.dark() ? '#ff3366' : '#dc2626' };
+        else signal = { text: '\u25C6 Fair Value', color: Theme.dark() ? '#ffaa00' : '#d97706' };
 
         return { signal, revChange, priceChange };
     }
@@ -287,15 +310,16 @@ const Charts = (() => {
 
         const name = (stockDetails[symbol]?.name || symbol).substring(0, 20);
         const pLabel = period.toUpperCase().replace('MO', 'M');
+        const mobile = _isMobile();
         const layout = _layout({
-            title: { text: `Price Action \u2014 ${name} (${pLabel})`, font: { size: 12, color: '#00f0ff' } },
+            title: { text: `Price Action \u2014 ${name} (${pLabel})`, font: { size: 12, color: Theme.plotlyLayout().accent } },
             xaxis: { rangeslider: { visible: false }, gridcolor: Theme.plotlyLayout().gridcolor },
             yaxis: { title: 'Price (\u20b9)', gridcolor: Theme.plotlyLayout().gridcolor },
-            margin: { l: 55, r: 10, t: 35, b: 30 },
+            margin: mobile ? { l: 50, r: 15, t: 35, b: 35 } : { l: 55, r: 10, t: 35, b: 30 },
             showlegend: false,
         });
 
-        Plotly.newPlot(containerId, [trace], layout, _config());
+        Plotly.newPlot(containerId, [trace], layout, _config({ candlestick: true }));
     }
 
     function _weeklyResample(data) {
