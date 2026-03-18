@@ -1,19 +1,17 @@
 """GET /api/news?stock=TCS — proxy Google News RSS (CORS blocked from browser)."""
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, quote
+from email.utils import parsedate_to_datetime
 import json
+import logging
 import urllib.request
-import xml.etree.ElementTree as ET
 
-import pandas as pd
+import defusedxml.ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 
 class handler(BaseHTTPRequestHandler):
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self._cors()
-        self.end_headers()
-
     def do_GET(self):
         params = parse_qs(urlparse(self.path).query)
         stock = params.get("stock", [""])[0]
@@ -25,8 +23,16 @@ class handler(BaseHTTPRequestHandler):
         try:
             articles = self._fetch_news(stock)
             self._json_response(200, {"articles": articles})
-        except Exception as e:
-            self._json_response(200, {"articles": [], "warning": str(e)})
+        except Exception:
+            logger.exception("news: failed to fetch for stock=%s", stock)
+            self._json_response(502, {"articles": [], "error": "Failed to fetch news"})
+
+    # Catch-all for unsupported methods
+    def do_POST(self):
+        self._json_response(405, {"error": "Method not allowed"})
+
+    do_PUT = do_POST
+    do_DELETE = do_POST
 
     def _fetch_news(self, stock_name, count=10):
         query = quote(f"{stock_name} NSE stock")
@@ -47,7 +53,7 @@ class handler(BaseHTTPRequestHandler):
             date_short = ""
             if pub_date:
                 try:
-                    dt = pd.to_datetime(pub_date)
+                    dt = parsedate_to_datetime(pub_date)
                     date_short = dt.strftime("%b %d")
                 except Exception:
                     date_short = pub_date[:16] if len(pub_date) >= 16 else pub_date
@@ -62,11 +68,7 @@ class handler(BaseHTTPRequestHandler):
 
     def _json_response(self, code, data):
         self.send_response(code)
-        self._cors()
         self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "public, max-age=1800, s-maxage=1800")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
-
-    def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")

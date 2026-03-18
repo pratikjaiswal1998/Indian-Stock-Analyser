@@ -3,22 +3,26 @@ const Theme = (() => {
     let isDark = true;
 
     function init() {
-        const saved = localStorage.getItem('theme');
+        let saved = null;
+        try { saved = localStorage.getItem('theme'); } catch (_) {}
+        const toggle_el = document.getElementById('theme-switch');
         if (saved === 'light') {
             isDark = false;
             document.body.classList.replace('dark', 'light');
             document.getElementById('theme-icon').textContent = '\u2600\uFE0F';
-            document.getElementById('theme-switch').checked = true;
+            if (toggle_el) toggle_el.checked = true;
+        } else {
+            if (toggle_el) toggle_el.checked = false;
         }
 
-        document.getElementById('theme-switch').addEventListener('change', toggle);
+        if (toggle_el) toggle_el.addEventListener('change', toggle);
     }
 
     function toggle() {
         isDark = !isDark;
         document.body.classList.replace(isDark ? 'light' : 'dark', isDark ? 'dark' : 'light');
         document.getElementById('theme-icon').textContent = isDark ? '\uD83C\uDF19' : '\u2600\uFE0F';
-        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        try { localStorage.setItem('theme', isDark ? 'dark' : 'light'); } catch (_) {}
 
         // Re-render charts with new theme
         if (typeof Charts !== 'undefined' && Charts.reRenderAll) {

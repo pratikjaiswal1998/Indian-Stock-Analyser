@@ -3,7 +3,7 @@ const Charts = (() => {
     const COLORS = [
         '#00f0ff', '#00ff88', '#ffaa00', '#ff006e', '#a78bfa',
         '#38bdf8', '#fb923c', '#e879f9', '#22d3ee', '#facc15',
-        '#f472b6', '#34d399',
+        '#f472b6', '#34d399', '#c084fc', '#67e8f9', '#fbbf24',
     ];
 
     let lastPieData = null;
@@ -12,7 +12,7 @@ const Charts = (() => {
     let lastCandleData = null;
 
     const _isMobile = () => window.matchMedia('(max-width: 900px)').matches
-        || 'ontouchstart' in window;
+        || (('ontouchstart' in window) && window.matchMedia('(pointer: coarse)').matches);
 
     function _layout(overrides = {}) {
         const t = Theme.plotlyLayout();
@@ -65,9 +65,11 @@ const Charts = (() => {
             dragmode: mobile ? false : undefined,
         });
 
+        const el = document.getElementById(containerId);
+        Plotly.purge(el);
         Plotly.newPlot(containerId, [trace], layout, _config()).then(() => {
             if (onClick) {
-                document.getElementById(containerId).on('plotly_click', (data) => {
+                el.on('plotly_click', (data) => {
                     if (data.points && data.points[0]) {
                         const idx = data.points[0].pointNumber;
                         onClick(items[idx], idx);
@@ -149,6 +151,7 @@ const Charts = (() => {
         });
 
         if (traces.length > 0) {
+            Plotly.purge(document.getElementById(containerId));
             Plotly.newPlot(containerId, traces, layout, _config());
         } else {
             Plotly.newPlot(containerId, [], _layout({
@@ -252,6 +255,7 @@ const Charts = (() => {
             dragmode: mobile ? false : undefined,
         });
 
+        Plotly.purge(document.getElementById(containerId));
         Plotly.newPlot(containerId, traces, layout, _config());
 
         // Compute signal
@@ -319,6 +323,7 @@ const Charts = (() => {
             showlegend: false,
         });
 
+        Plotly.purge(document.getElementById(containerId));
         Plotly.newPlot(containerId, [trace], layout, _config());
     }
 
@@ -348,6 +353,12 @@ const Charts = (() => {
         if (lastDivergenceData) renderDivergence(lastDivergenceData.containerId, lastDivergenceData.data, lastDivergenceData.period);
         if (lastCandleData) renderCandlestick(lastCandleData.containerId, lastCandleData.data, lastCandleData.period);
     }
+
+    let _resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(reRenderAll, 250);
+    });
 
     return { renderPie, renderRevenue, renderDivergence, renderCandlestick, reRenderAll, COLORS };
 })();

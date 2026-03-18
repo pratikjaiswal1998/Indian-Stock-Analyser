@@ -56,6 +56,16 @@ body {
 ::-webkit-scrollbar-track { background: var(--panel-bg); }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
 
+/* Firefox scrollbar */
+body {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--panel-bg);
+}
+.sidebar, .stock-list-inner, .news-body {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--panel-bg);
+}
+
 /* ── HEADER ──────────────────────────────────── */
 #header {
     display: flex;
@@ -417,9 +427,12 @@ body.light .primary-btn { color: #ffffff; }
     min-width: 320px;
     background: var(--panel-bg);
     border-left: 1px solid var(--border);
-    display: flex;
+    display: none;
     flex-direction: column;
     overflow: hidden;
+}
+.news-panel.visible {
+    display: flex;
 }
 
 .news-header {
@@ -505,6 +518,8 @@ body.light .primary-btn { color: #ffffff; }
     max-width: 520px;
     width: 90%;
     max-height: 80vh;
+    /* Progressive enhancement: dvh accounts for mobile browser chrome (address bar).
+       Browsers that don't support dvh fall back to the vh declaration above. */
     max-height: 80dvh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -780,8 +795,8 @@ button, select, .stock-item, .news-item, .theme-toggle {
         scroll-snap-type: x mandatory;
         scrollbar-width: none;
         padding-bottom: 4px;
-        mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        mask-image: linear-gradient(to right, black 92%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to right, black 92%, transparent 100%);
     }
     #kpi-row::-webkit-scrollbar { display: none; }
     .kpi-card { scroll-snap-align: start; }
@@ -824,7 +839,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
     }
 
     /* News panel as bottom sheet */
-    .news-panel {
+    .news-panel.visible {
         position: fixed;
         bottom: 0;
         left: 0;
@@ -839,7 +854,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
         transition: transform 0.3s ease;
         padding-bottom: env(safe-area-inset-bottom);
     }
-    .news-panel.expanded {
+    .news-panel.visible.expanded {
         transform: translateY(0);
     }
     .news-list {
@@ -886,8 +901,6 @@ button, select, .stock-item, .news-item, .theme-toggle {
 }
 
 @media (max-width: 500px) {
-    #header h1 { font-size: 14px; }
-
     #kpi-row {
         grid-template-columns: repeat(6, minmax(100px, 1fr));
     }
@@ -911,6 +924,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
         width: 100%;
         max-width: 100%;
         max-height: 90vh;
+        /* dvh progressive enhancement: see main .modal-content comment */
         max-height: 90dvh;
         border-radius: 16px 16px 0 0;
         padding: 20px;

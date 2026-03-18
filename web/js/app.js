@@ -13,6 +13,16 @@ const App = (() => {
     let pieLevel = 0;         // 0=none, 1=sector, 2=industry
     let pieOrder = [];        // symbols in pie chart order (mcap desc)
 
+    // AbortControllers for race condition prevention (fixes #4, #5)
+    let currentAnalyzeController = null;
+    let currentSectorController = null;
+
+    // Loading counter for nested show/hide (fix #9)
+    let loadingCount = 0;
+
+    // Modal focus management (fix #21)
+    let lastModalTrigger = null;
+
     const SORT_EXPLANATIONS = {
         divergence: "Value Divergence compares a stock's revenue growth to its price growth. Higher score = more undervalued (revenue grew faster than price).",
         mcap: "Market Capitalization is the total market value of a company. Larger = more established.",
@@ -25,7 +35,13 @@ const App = (() => {
     // ── INIT ────────────────────────────────────
     async function init() {
         Theme.init();
-        await Sentiment.init();
+
+        // Fix #8: Sentiment.init() failure should not kill the app
+        try {
+            await Sentiment.init();
+        } catch (e) {
+            console.warn('Sentiment init failed, continuing without it:', e);
+        }
 
         // Load industries
         setStatus('Loading industries...');
@@ -35,7 +51,12 @@ const App = (() => {
             populateSectors();
             setStatus('Ready');
         } catch (e) {
-            setStatus('Failed to load industries: ' + e.message);
+            // Fix #11: detect network errors
+            if (e instanceof TypeError) {
+                setStatus('No internet connection. Please check your network.');
+            } else {
+                setStatus('Failed to load industries: ' + e.message);
+            }
         }
 
         // Mobile sidebar — start open so user can pick sector
@@ -48,19 +69,23 @@ const App = (() => {
             document.getElementById('sidebar').classList.toggle('open');
         });
         document.getElementById('sector-select').addEventListener('change', onSectorChange);
-        document.getElementById('industry-select').addEventListener('change', () => {});
+        // Fix #14: removed empty industry change listener
         document.getElementById('load-btn').addEventListener('click', onLoadStocks);
         document.getElementById('sort-select').addEventListener('change', onSortChange);
         document.getElementById('sort-info-btn').addEventListener('click', showSortInfo);
         document.getElementById('back-btn').addEventListener('click', onBackToSector);
+
+        // Fix #19: news panel toggle uses CSS class instead of inline display
         document.getElementById('news-close').addEventListener('click', () => {
-            document.getElementById('news-panel').style.display = 'none';
+            document.getElementById('news-panel').classList.remove('visible');
         });
+
+        // Fix #20 + #21: modal close uses e.target === e.currentTarget + focus management
         document.getElementById('sort-modal-close').addEventListener('click', () => {
-            document.getElementById('sort-modal').style.display = 'none';
+            closeModal('sort-modal');
         });
         document.getElementById('news-modal-close').addEventListener('click', () => {
-            document.getElementById('news-modal').style.display = 'none';
+            closeModal('news-modal');
         });
 
         // Timeline buttons
@@ -68,20 +93,20 @@ const App = (() => {
             btn.addEventListener('click', () => onPeriodChange(btn.dataset.period));
         });
 
-        // Close modals on background click
+        // Fix #20: Close modals on background click — use e.target === e.currentTarget
         ['sort-modal', 'news-modal'].forEach(id => {
             document.getElementById(id).addEventListener('click', (e) => {
-                if (e.target.classList.contains('modal')) e.target.style.display = 'none';
+                if (e.target === e.currentTarget) closeModal(id);
             });
         });
 
-        // Escape key closes modals, arrow keys navigate stocks
+        // Fix #13: Escape key closes modals, arrow keys navigate stocks (with select guard)
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                ['sort-modal', 'news-modal'].forEach(id => {
-                    document.getElementById(id).style.display = 'none';
-                });
+                ['sort-modal', 'news-modal'].forEach(id => closeModal(id));
             }
+            // Fix #13: guard against arrow key conflict with form elements
+            if (['SELECT', 'INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
             if (e.key === 'ArrowLeft') navigateStock(-1);
             if (e.key === 'ArrowRight') navigateStock(1);
         });
@@ -104,35 +129,75 @@ const App = (() => {
         document.getElementById('swipe-next').addEventListener('click', () => navigateStock(1));
     }
 
-    // ── API HELPER ──────────────────────────────
-    async function apiFetch(path) {
-        const resp = await fetch(API_BASE + path);
+    // ── API HELPER (fixes #6, #7) ──────────────
+    const apiCache = new Map();
+    async function apiFetch(path, signal, ttlMs = 300000) {
+        // Fix #7: client-side cache
+        const cached = apiCache.get(path);
+        if (cached && Date.now() - cached.time < ttlMs) return cached.data;
+
+        const resp = await fetch(API_BASE + path, signal ? { signal } : {});
         if (!resp.ok) throw new Error(`API error ${resp.status}`);
-        return resp.json();
+
+        // Fix #6: handle non-JSON responses
+        let data;
+        try {
+            data = await resp.json();
+        } catch {
+            throw new Error('Invalid response from server');
+        }
+
+        apiCache.set(path, { data, time: Date.now() });
+        return data;
     }
 
-    // ── POPULATE DROPDOWNS ──────────────────────
+    // ── POPULATE DROPDOWNS (fixes #1, #12) ─────
     function populateSectors() {
         const sel = document.getElementById('sector-select');
-        sel.innerHTML = '<option value="">Select a sector</option>';
+        // Fix #1 + #12: use createElement instead of innerHTML += to avoid XSS and quadratic perf
+        sel.innerHTML = '';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = 'Select a sector';
+        sel.appendChild(defaultOpt);
         for (const sector of Object.keys(industries).sort()) {
-            sel.innerHTML += `<option value="${sector}">${sector}</option>`;
+            const opt = document.createElement('option');
+            opt.value = sector;
+            opt.textContent = sector;
+            sel.appendChild(opt);
         }
     }
 
     function populateIndustries(sector) {
         const sel = document.getElementById('industry-select');
         const list = industries[sector] || [];
-        sel.innerHTML = '<option value="">Select industry</option>';
+        // Fix #1 + #12: use createElement instead of innerHTML +=
+        sel.innerHTML = '';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = 'Select industry';
+        sel.appendChild(defaultOpt);
         for (const ind of list) {
-            sel.innerHTML += `<option value="${ind}">${ind}</option>`;
+            const opt = document.createElement('option');
+            opt.value = ind;
+            opt.textContent = ind;
+            sel.appendChild(opt);
         }
     }
 
-    // ── SECTOR CHANGE → PIE LEVEL 1 ────────────
+    // ── SECTOR CHANGE → PIE LEVEL 1 (fix #5) ──
     async function onSectorChange() {
         const sector = document.getElementById('sector-select').value;
-        if (!sector) return;
+        if (!sector) {
+            // Fix #10: restore empty state when sector selection is cleared
+            showEmptyState();
+            return;
+        }
+
+        // Fix #5: abort previous sector request
+        if (currentSectorController) currentSectorController.abort();
+        currentSectorController = new AbortController();
+        const signal = currentSectorController.signal;
 
         populateIndustries(sector);
         document.getElementById('stock-list').innerHTML = '';
@@ -142,7 +207,8 @@ const App = (() => {
         hideEmptyState();
         showLoading('Loading sector data...');
         try {
-            const resp = await apiFetch(`/api/screen?type=sector&value=${encodeURIComponent(sector)}`);
+            const resp = await apiFetch(`/api/screen?type=sector&value=${encodeURIComponent(sector)}`, signal);
+            if (signal.aborted) return;
             const stocks = resp.stocks || [];
 
             // Group by industry for pie
@@ -159,20 +225,33 @@ const App = (() => {
 
             document.getElementById('chart-area').classList.add('pie-only');
             document.getElementById('back-btn').style.display = 'none';
-            document.getElementById('news-panel').style.display = 'none';
+            document.getElementById('news-panel').classList.remove('visible');
             pieLevel = 1;
 
             Charts.renderPie('chart-pie', items, `Market Share \u2014 ${sector}`, (item) => {
                 // Click pie slice → select that industry
-                document.getElementById('industry-select').value = item.label;
+                // Fix #15: verify industry dropdown value matches
+                const indSel = document.getElementById('industry-select');
+                indSel.value = item.label;
+                if (indSel.value !== item.label) {
+                    setStatus(`Industry "${item.label}" not found in dropdown`);
+                    return;
+                }
                 onLoadStocks();
             });
 
-            hideLoading();
             setStatus(`${sector} \u2014 ${stocks.length} stocks across ${Object.keys(indMap).length} industries`);
         } catch (e) {
+            if (e.name === 'AbortError') return;
+            // Fix #11: detect network errors
+            if (e instanceof TypeError) {
+                setStatus('No internet connection. Please check your network.');
+            } else {
+                setStatus('Error: ' + e.message);
+            }
+        } finally {
+            // Fix #9: hideLoading in finally block
             hideLoading();
-            setStatus('Error: ' + e.message);
         }
     }
 
@@ -240,15 +319,21 @@ const App = (() => {
                 .then(newsResp => showNews(newsResp.articles || [], {}))
                 .catch(() => {});
 
-            hideLoading();
             setStatus(`${industry} \u2014 ${stockList.length} stocks loaded \u2014 click a stock to analyze`);
         } catch (e) {
+            // Fix #11: detect network errors
+            if (e instanceof TypeError) {
+                setStatus('No internet connection. Please check your network.');
+            } else {
+                setStatus('Error: ' + e.message);
+            }
+        } finally {
+            // Fix #9: hideLoading in finally block
             hideLoading();
-            setStatus('Error: ' + e.message);
         }
     }
 
-    // ── SORT ────────────────────────────────────
+    // ── SORT (fix #3: divergence case) ─────────
     function applySortAndRender() {
         const sortKey = document.getElementById('sort-select').value;
         const sorted = [...stockList];
@@ -260,6 +345,12 @@ const App = (() => {
                 case 'pb': return (a.priceToBook || 9999) - (b.priceToBook || 9999);
                 case 'dividend': return (b.dividendYield || 0) - (a.dividendYield || 0);
                 case 'ev': return (a.evToEbitda || 9999) - (b.evToEbitda || 9999);
+                // Fix #3: implement divergence sort
+                case 'divergence': {
+                    const divA = (a.divergenceScore != null) ? a.divergenceScore : -(a.marketCap || 0);
+                    const divB = (b.divergenceScore != null) ? b.divergenceScore : -(b.marketCap || 0);
+                    return divB - divA; // higher divergence = more undervalued = first
+                }
                 default: return (b.marketCap || 0) - (a.marketCap || 0);
             }
         });
@@ -269,6 +360,7 @@ const App = (() => {
 
     function onSortChange() { applySortAndRender(); }
 
+    // Fix #2: renderStockList uses createElement + textContent instead of innerHTML
     function renderStockList(stocks) {
         const container = document.getElementById('stock-list');
         container.innerHTML = '';
@@ -276,15 +368,31 @@ const App = (() => {
         for (const s of stocks) {
             const div = document.createElement('div');
             div.className = 'stock-item' + (s.symbol === currentSymbol ? ' selected' : '');
-            const mcapStr = fmtInr(s.marketCap);
-            div.innerHTML = `<span class="name">${s.name || s.symbol}</span><span class="mcap">${mcapStr}</span>`;
+            // Fix #18: use data-symbol attribute for selection comparison
+            div.dataset.symbol = s.symbol;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'name';
+            nameSpan.textContent = s.name || s.symbol;
+
+            const mcapSpan = document.createElement('span');
+            mcapSpan.className = 'mcap';
+            mcapSpan.textContent = fmtInr(s.marketCap);
+
+            div.appendChild(nameSpan);
+            div.appendChild(mcapSpan);
             div.addEventListener('click', () => analyzeStock(s.symbol));
             container.appendChild(div);
         }
     }
 
-    // ── ANALYZE STOCK ───────────────────────────
+    // ── ANALYZE STOCK (fix #4: AbortController) ─
     async function analyzeStock(symbol) {
+        // Fix #4: abort previous analyze request
+        if (currentAnalyzeController) currentAnalyzeController.abort();
+        currentAnalyzeController = new AbortController();
+        const signal = currentAnalyzeController.signal;
+
         currentSymbol = symbol;
 
         // Immediately close sidebar on mobile for instant feedback
@@ -292,12 +400,9 @@ const App = (() => {
             document.getElementById('sidebar').classList.remove('open');
         }
 
-        // Highlight in list
-        document.querySelectorAll('.stock-item').forEach(el => el.classList.remove('selected'));
+        // Fix #18: highlight in list using data-symbol attribute
         document.querySelectorAll('.stock-item').forEach(el => {
-            if (el.querySelector('.name').textContent === (stockDetails[symbol]?.name || symbol)) {
-                el.classList.add('selected');
-            }
+            el.classList.toggle('selected', el.dataset.symbol === symbol);
         });
 
         const info = stockDetails[symbol] || {};
@@ -322,11 +427,14 @@ const App = (() => {
         showLoading('Analyzing...');
 
         try {
-            // Fetch analyze + news in parallel
+            // Fetch analyze + news in parallel, passing signal
             const [dataResp, newsResp] = await Promise.all([
-                apiFetch(`/api/analyze?symbol=${encodeURIComponent(symbol)}&peers=${encodeURIComponent(peers.join(','))}`),
-                apiFetch(`/api/news?stock=${encodeURIComponent((info.name || symbol).replace('.NS', ''))}`),
+                apiFetch(`/api/analyze?symbol=${encodeURIComponent(symbol)}&peers=${encodeURIComponent(peers.join(','))}`, signal),
+                apiFetch(`/api/news?stock=${encodeURIComponent((info.name || symbol).replace('.NS', ''))}`, signal),
             ]);
+
+            // Fix #4: check if aborted after awaits
+            if (signal.aborted) return;
 
             analyzeData = dataResp;
             analyzeData.stockDetails = stockDetails;
@@ -359,11 +467,18 @@ const App = (() => {
             // News panel
             showNews(newsResp.articles || [], dataResp.financials || {});
 
-            hideLoading();
             setStatus(`${info.name || symbol} \u2014 ${peers.length} peer(s) charted`);
         } catch (e) {
+            if (e.name === 'AbortError') return;
+            // Fix #11: detect network errors
+            if (e instanceof TypeError) {
+                setStatus('No internet connection. Please check your network.');
+            } else {
+                setStatus('Error analyzing: ' + e.message);
+            }
+        } finally {
+            // Fix #9: hideLoading in finally block
             hideLoading();
-            setStatus('Error analyzing: ' + e.message);
         }
     }
 
@@ -422,11 +537,12 @@ const App = (() => {
         });
     }
 
-    // ── NEWS ────────────────────────────────────
+    // ── NEWS (fix #19: use CSS class .visible) ──
     function showNews(articles, financials) {
         const panel = document.getElementById('news-panel');
         const list = document.getElementById('news-list');
-        panel.style.display = 'flex';
+        // Fix #19: use CSS class instead of inline display
+        panel.classList.add('visible');
         list.innerHTML = '';
 
         if (articles.length === 0) {
@@ -443,7 +559,7 @@ const App = (() => {
             div.innerHTML = `
                 <div class="news-title">${escHtml(article.title)}</div>
                 <div class="news-meta">
-                    <span class="sentiment-badge ${sentiment}">${sentiment}</span>
+                    <span class="sentiment-badge ${escHtml(sentiment)}">${escHtml(sentiment)}</span>
                     <span>${escHtml(article.source)} &middot; ${escHtml(article.date)}</span>
                 </div>
             `;
@@ -453,15 +569,15 @@ const App = (() => {
     }
 
     function showNewsPopup(title, sentiment, impact) {
-        document.getElementById('news-modal-badge').className = `sentiment-badge ${sentiment}`;
+        document.getElementById('news-modal-badge').className = `sentiment-badge ${escHtml(sentiment)}`;
         document.getElementById('news-modal-badge').textContent = sentiment;
         document.getElementById('news-modal-title').textContent = title;
         document.getElementById('news-modal-impact').textContent = impact;
-        document.getElementById('news-modal').style.display = 'flex';
+        openModal('news-modal');
     }
 
-    // ── BACK BUTTON ─────────────────────────────
-    function onBackToSector() {
+    // ── BACK BUTTON (fix #16: async + await) ────
+    async function onBackToSector() {
         // Hide swipe indicator
         document.getElementById('swipe-indicator').style.display = 'none';
 
@@ -502,14 +618,19 @@ const App = (() => {
         // If viewing industry pie → go back to sector pie
         document.getElementById('chart-area').classList.add('pie-only');
         document.getElementById('back-btn').style.display = 'none';
-        document.getElementById('news-panel').style.display = 'none';
+        document.getElementById('news-panel').classList.remove('visible');
         stockList = [];
         stockDetails = {};
         document.getElementById('stock-list').innerHTML = '';
 
         const sector = document.getElementById('sector-select').value;
         if (sector) {
-            onSectorChange();
+            // Fix #16: await the async call with catch
+            try {
+                await onSectorChange();
+            } catch (e) {
+                setStatus('Error returning to sector: ' + e.message);
+            }
         }
 
         ['industry', 'ind-size', 'mcap', 'price', 'pe', 'signal'].forEach(k => setKPI(k, '\u2014'));
@@ -520,7 +641,28 @@ const App = (() => {
         const key = document.getElementById('sort-select').value;
         document.getElementById('sort-modal-title').textContent = document.getElementById('sort-select').selectedOptions[0].textContent;
         document.getElementById('sort-modal-body').textContent = SORT_EXPLANATIONS[key] || '';
-        document.getElementById('sort-modal').style.display = 'flex';
+        openModal('sort-modal');
+    }
+
+    // ── MODAL HELPERS (fix #21: focus management) ─
+    function openModal(id) {
+        lastModalTrigger = document.activeElement;
+        const modal = document.getElementById(id);
+        modal.style.display = 'flex';
+        // Move focus into modal
+        const focusable = modal.querySelector('button, [tabindex], a, input, select, textarea');
+        if (focusable) focusable.focus();
+    }
+
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        if (modal.style.display === 'none' && !modal.classList.contains('visible')) return;
+        modal.style.display = 'none';
+        // Fix #21: restore focus to trigger element
+        if (lastModalTrigger && typeof lastModalTrigger.focus === 'function') {
+            lastModalTrigger.focus();
+            lastModalTrigger = null;
+        }
     }
 
     // ── HELPERS ─────────────────────────────────
@@ -535,33 +677,43 @@ const App = (() => {
         else if (card) card.classList.remove('active');
     }
 
+    // Fix #25: fmtInr handles small values (Lakh tier) and negatives
     function fmtInr(value) {
-        if (!value || value === 0) return '\u2014';
-        const cr = value / 1e7;
-        if (cr >= 1e5) return `\u20b9${(cr / 1e5).toFixed(2)} L Cr`;
-        if (cr >= 1) return `\u20b9${Math.round(cr).toLocaleString('en-IN')} Cr`;
-        return `\u20b9${Math.round(value).toLocaleString('en-IN')}`;
+        if (value == null || value === 0) return '\u2014';
+        const negative = value < 0;
+        const abs = Math.abs(value);
+        const cr = abs / 1e7;
+        let result;
+        if (cr >= 1e5) result = `\u20b9${(cr / 1e5).toFixed(2)} L Cr`;
+        else if (cr >= 1) result = `\u20b9${Math.round(cr).toLocaleString('en-IN')} Cr`;
+        else if (abs >= 1e5) result = `\u20b9${(abs / 1e5).toFixed(2)} Lakh`;
+        else result = `\u20b9${Math.round(abs).toLocaleString('en-IN')}`;
+        return negative ? '-' + result : result;
     }
 
+    // Fix #17: string-based escHtml instead of DOM-based
     function escHtml(str) {
-        const d = document.createElement('div');
-        d.textContent = str || '';
-        return d.innerHTML;
+        return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function setStatus(msg) {
         document.getElementById('status-bar').textContent = msg;
     }
 
+    // Fix #9: loading counter for nested show/hide
     function showLoading(msg) {
+        loadingCount++;
         document.getElementById('loading-text').textContent = msg || 'Loading...';
         document.getElementById('loading-overlay').style.display = 'flex';
         document.body.style.overflow = 'hidden';
     }
 
     function hideLoading() {
-        document.getElementById('loading-overlay').style.display = 'none';
-        document.body.style.overflow = '';
+        if (loadingCount > 0) loadingCount--;
+        if (loadingCount === 0) {
+            document.getElementById('loading-overlay').style.display = 'none';
+            document.body.style.overflow = '';
+        }
     }
 
     function hideEmptyState() {
@@ -569,28 +721,41 @@ const App = (() => {
         if (el) el.style.display = 'none';
     }
 
-    // ── SWIPE NAVIGATION ──────────────────────────
+    // Fix #10: restore empty state on reset
+    function showEmptyState() {
+        const el = document.getElementById('empty-state');
+        if (el) el.style.display = '';
+        document.getElementById('stock-list').innerHTML = '';
+        document.getElementById('chart-area').classList.add('pie-only');
+    }
+
+    // ── SWIPE NAVIGATION (fixes #22, #23, #24) ──
     function initChartSwipe() {
-        const el = document.getElementById('charts-left');
-        if (!el) return;
+        // Fix #24: add swipe to both #charts-left and #charts-right
+        const targets = [
+            document.getElementById('charts-left'),
+            document.getElementById('charts-right'),
+        ].filter(Boolean);
 
-        let startX = 0;
-        let startY = 0;
+        for (const el of targets) {
+            let startX = 0;
+            let startY = 0;
 
-        el.addEventListener('touchstart', (e) => {
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-        }, { passive: true });
+            el.addEventListener('touchstart', (e) => {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            }, { passive: true });
 
-        el.addEventListener('touchend', (e) => {
-            const dx = e.changedTouches[0].clientX - startX;
-            const dy = e.changedTouches[0].clientY - startY;
+            el.addEventListener('touchend', (e) => {
+                const dx = e.changedTouches[0].clientX - startX;
+                const dy = e.changedTouches[0].clientY - startY;
 
-            // Only trigger if horizontal swipe > 60px and more horizontal than vertical
-            if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-                navigateStock(dx < 0 ? 1 : -1);
-            }
-        });
+                // Only trigger if horizontal swipe > 60px and more horizontal than vertical
+                if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                    navigateStock(dx < 0 ? 1 : -1);
+                }
+            });
+        }
     }
 
     function navigateStock(direction) {
@@ -624,26 +789,32 @@ const App = (() => {
         indicator.style.display = 'flex';
     }
 
+    // Fix #22 + #23: news drag with passive:false on touchmove, cache offsetHeight
     function initNewsDrag() {
         const panel = document.getElementById('news-panel');
         const header = panel.querySelector('.news-header');
         let startY = 0;
+        let cachedPanelHeight = 0;
 
         header.addEventListener('touchstart', (e) => {
             startY = e.touches[0].clientY;
+            // Fix #23: cache offsetHeight on touchstart
+            cachedPanelHeight = panel.offsetHeight;
             panel.style.transition = 'none';
         }, { passive: true });
 
+        // Fix #22: use {passive: false} so we can preventDefault
         header.addEventListener('touchmove', (e) => {
+            e.preventDefault();
             const dy = e.touches[0].clientY - startY;
             if (panel.classList.contains('expanded')) {
                 if (dy > 0) panel.style.transform = `translateY(${dy}px)`;
             } else {
-                const baseOffset = panel.offsetHeight - 120;
+                const baseOffset = cachedPanelHeight - 120;
                 const newY = Math.max(0, baseOffset + dy);
                 panel.style.transform = `translateY(${newY}px)`;
             }
-        }, { passive: true });
+        }, { passive: false });
 
         header.addEventListener('touchend', (e) => {
             panel.style.transition = 'transform 0.3s ease';

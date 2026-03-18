@@ -3,9 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Indian Stock Analyser — NSE stock screener with value-based analysis, interactive charts, and real-time news intelligence.">
+    <meta property="og:title" content="Indian Stock Analyser">
+    <meta property="og:description" content="NSE stock screener with interactive charts and news sentiment analysis">
+    <meta property="og:type" content="website">
     <title>Indian Stock Analyser — NSE Screener</title>
+    <link rel="preconnect" href="https://cdn.plot.ly" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.plot.ly">
     <link rel="stylesheet" href="css/style.css">
-    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js" defer></script>
 </head>
 <body class="dark">
 
@@ -18,7 +24,7 @@
     <div class="header-right">
         <label class="theme-toggle" title="Toggle theme">
             <span class="icon" id="theme-icon">&#127769;</span>
-            <input type="checkbox" id="theme-switch">
+            <input type="checkbox" id="theme-switch" aria-label="Toggle light/dark theme">
             <span class="slider"></span>
         </label>
     </div>
@@ -28,17 +34,17 @@
 <div id="app-container">
 
     <!-- LEFT SIDEBAR -->
-    <aside id="sidebar">
+    <aside id="sidebar" role="navigation" aria-label="Stock Selection">
         <div class="control-group">
-            <label>Sector</label>
+            <label for="sector-select">Sector</label>
             <select id="sector-select"><option>Loading...</option></select>
         </div>
         <div class="control-group">
-            <label>Industry</label>
+            <label for="industry-select">Industry</label>
             <select id="industry-select"><option>Select sector first</option></select>
         </div>
         <div class="control-group">
-            <label>Sort By</label>
+            <label for="sort-select">Sort By</label>
             <select id="sort-select">
                 <option value="divergence">Value Divergence</option>
                 <option value="mcap">Market Cap</option>
@@ -107,29 +113,29 @@
     </main>
 
     <!-- NEWS PANEL -->
-    <aside id="news-panel" class="news-panel" style="display:none;">
+    <aside id="news-panel" class="news-panel">
         <div class="news-header">
             <div class="drag-handle"></div>
             <h3>News Intelligence</h3>
-            <button id="news-close" class="icon-btn">&times;</button>
+            <button id="news-close" class="icon-btn" aria-label="Close">&times;</button>
         </div>
         <div id="news-list" class="news-list"></div>
     </aside>
 </div>
 
 <!-- SORT EXPLANATION MODAL -->
-<div id="sort-modal" class="modal" style="display:none;">
+<div id="sort-modal" class="modal" role="dialog" aria-modal="true" style="display:none;">
     <div class="modal-content">
-        <button class="modal-close" id="sort-modal-close">&times;</button>
+        <button class="modal-close" id="sort-modal-close" aria-label="Close">&times;</button>
         <h3 id="sort-modal-title"></h3>
         <p id="sort-modal-body"></p>
     </div>
 </div>
 
 <!-- NEWS POPUP MODAL -->
-<div id="news-modal" class="modal" style="display:none;">
+<div id="news-modal" class="modal" role="dialog" aria-modal="true" style="display:none;">
     <div class="modal-content news-modal-content">
-        <button class="modal-close" id="news-modal-close">&times;</button>
+        <button class="modal-close" id="news-modal-close" aria-label="Close">&times;</button>
         <div class="sentiment-badge" id="news-modal-badge"></div>
         <h3 id="news-modal-title"></h3>
         <p id="news-modal-impact"></p>
@@ -137,14 +143,14 @@
 </div>
 
 <!-- LOADING OVERLAY -->
-<div id="loading-overlay" style="display:none;">
+<div id="loading-overlay" role="status" aria-live="assertive" style="display:none;">
     <div class="spinner"></div>
     <p id="loading-text">Loading...</p>
 </div>
 
-<script src="js/theme.js"></script>
-<script src="js/sentiment.js"></script>
-<script src="js/charts.js"></script>
-<script src="js/app.js"></script>
+<script src="js/theme.js" defer></script>
+<script src="js/sentiment.js" defer></script>
+<script src="js/charts.js" defer></script>
+<script src="js/app.js" defer></script>
 </body>
 </html>

@@ -4,6 +4,7 @@ const Sentiment = (() => {
     let lmPos = new Set();
     let lmNeg = new Set();
     let loaded = false;
+    let _initPromise = null;
 
     const BULLISH_PHRASES = [
         "revenue growth", "profit growth", "strong growth", "record profit",
@@ -57,27 +58,38 @@ const Sentiment = (() => {
     const NEGATION_PREFIXES = ["no ", "not ", "without ", "lack of ", "failed to ", "unable to "];
 
     async function init() {
-        try {
-            const resp = await fetch('data/lm_dictionary.json');
-            const data = await resp.json();
-            lmPos = new Set(data.positive || []);
-            lmNeg = new Set(data.negative || []);
-            loaded = true;
-        } catch (e) {
-            console.warn('LM dictionary not loaded:', e);
-        }
+        if (loaded) return;
+        if (_initPromise) return _initPromise;
+        _initPromise = (async () => {
+            try {
+                const resp = await fetch('data/lm_dictionary.json');
+                const data = await resp.json();
+                lmPos = new Set(data.positive || []);
+                lmNeg = new Set(data.negative || []);
+                loaded = true;
+            } catch (e) {
+                console.warn('LM dictionary not loaded:', e);
+            }
+        })();
+        return _initPromise;
     }
 
     function classify(text) {
         if (!text) return { sentiment: 'neutral', keywords: [] };
+        if (!loaded) init();
         const lower = text.toLowerCase();
         let bullScore = 0, bearScore = 0;
         const bullHits = [], bearHits = [];
 
-        // Phase 1: Phrases (weight 3)
+        // Phase 1: Phrases (weight 3) — word-boundary matching
+        function matchPhrase(phrase) {
+            const re = new RegExp('\\b' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+            const m = re.exec(lower);
+            return m ? m.index : -1;
+        }
         for (const phrase of BULLISH_PHRASES) {
-            if (lower.includes(phrase)) {
-                const idx = lower.indexOf(phrase);
+            const idx = matchPhrase(phrase);
+            if (idx >= 0) {
                 const before = lower.substring(Math.max(0, idx - 15), idx);
                 const negated = NEGATION_PREFIXES.some(n => before.includes(n));
                 if (negated) { bearScore += 3; bearHits.push('not ' + phrase); }
@@ -85,8 +97,8 @@ const Sentiment = (() => {
             }
         }
         for (const phrase of BEARISH_PHRASES) {
-            if (lower.includes(phrase)) {
-                const idx = lower.indexOf(phrase);
+            const idx = matchPhrase(phrase);
+            if (idx >= 0) {
                 const before = lower.substring(Math.max(0, idx - 15), idx);
                 const negated = NEGATION_PREFIXES.some(n => before.includes(n));
                 if (negated) { bullScore += 3; bullHits.push('no ' + phrase); }
