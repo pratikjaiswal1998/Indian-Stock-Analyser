@@ -43,9 +43,13 @@ class handler(BaseHTTPRequestHandler):
                 stocks = self._screen_industry(value)
 
             self._json_response(200, {"stocks": stocks})
-        except Exception:
+        except Exception as exc:
             logger.exception("screen: unhandled error type=%s value=%s", qtype, value)
-            self._json_response(500, {"error": "Internal server error"})
+            self._json_response(500, {
+                "error": f"{type(exc).__name__}: {exc}",
+                "type": qtype,
+                "value": value,
+            })
 
     # Catch-all for unsupported methods
     def do_POST(self):
