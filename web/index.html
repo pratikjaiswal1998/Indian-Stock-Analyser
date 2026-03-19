@@ -3,154 +3,145 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="description" content="Indian Stock Analyser — NSE stock screener with value-based analysis, interactive charts, and real-time news intelligence.">
-    <meta property="og:title" content="Indian Stock Analyser">
-    <meta property="og:description" content="NSE stock screener with interactive charts and news sentiment analysis">
+    <meta name="description" content="Indian Stock Analyser — Free NSE stock screener with value divergence analysis, interactive charts, and real-time news sentiment. No sign-up required.">
+    <meta property="og:title" content="Indian Stock Analyser — Free NSE Stock Screener">
+    <meta property="og:description" content="Screen every NSE sector and industry. Find undervalued stocks with proprietary value divergence scoring.">
     <meta property="og:type" content="website">
-    <title>Indian Stock Analyser — NSE Screener</title>
-    <link rel="preconnect" href="https://cdn.plot.ly" crossorigin>
-    <link rel="dns-prefetch" href="https://cdn.plot.ly">
+    <title>Indian Stock Analyser — Free NSE Stock Screener</title>
     <link rel="stylesheet" href="css/style.css">
-    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js" defer></script>
 </head>
 <body class="dark">
 
-<!-- ── HEADER ─────────────────────────────────── -->
-<header id="header">
-    <div class="header-left">
-        <button id="menu-btn" class="menu-btn" title="Menu">&#9776;</button>
-        <h1>Stock Picker <span class="subtitle">NSE Industry Screener</span></h1>
+<!-- ── STICKY NAV ─────────────────────────────── -->
+<nav class="lp-nav">
+    <div class="lp-nav-inner">
+        <span class="lp-nav-brand">Indian Stock Analyser</span>
+        <div class="lp-nav-right">
+            <label class="theme-toggle" aria-label="Toggle theme">
+                <span class="icon" id="theme-icon">&#127769;</span>
+                <input type="checkbox" id="theme-switch">
+                <span class="slider"></span>
+            </label>
+            <a href="app.html" class="primary-btn lp-nav-cta">Launch App &#8594;</a>
+        </div>
     </div>
-    <div class="header-right">
-        <label class="theme-toggle" title="Toggle theme">
-            <span class="icon" id="theme-icon">&#127769;</span>
-            <input type="checkbox" id="theme-switch" aria-label="Toggle light/dark theme">
-            <span class="slider"></span>
-        </label>
+</nav>
+
+<main>
+
+<!-- ── HERO SECTION ───────────────────────────── -->
+<section class="lp-hero">
+    <div class="lp-hero-content">
+        <p class="lp-hero-tagline">FREE NSE STOCK SCREENER</p>
+        <h1 class="lp-hero-headline">Find Undervalued Indian Stocks<br>Before the Market Does</h1>
+        <p class="lp-hero-sub">Screen every NSE sector and industry. Drill into interactive charts. Spot value divergence between revenue growth and price movement &mdash; all powered by live market data.</p>
+        <div class="lp-hero-buttons">
+            <a href="app.html" class="primary-btn lp-btn-launch">Launch App</a>
+            <a href="#how-it-works" class="lp-btn-outline">See How It Works</a>
+        </div>
+        <p class="lp-hero-trust">No sign-up required &middot; No API keys &middot; 100% free</p>
     </div>
-</header>
+</section>
 
-<!-- ── MAIN LAYOUT ────────────────────────────── -->
-<div id="app-container">
-
-    <!-- LEFT SIDEBAR -->
-    <aside id="sidebar" role="navigation" aria-label="Stock Selection">
-        <div class="control-group">
-            <label for="sector-select">Sector</label>
-            <select id="sector-select"><option>Loading...</option></select>
+<!-- ── STATS BAR ──────────────────────────────── -->
+<section class="lp-stats">
+    <div class="lp-stats-inner">
+        <div class="lp-stat-card">
+            <span class="lp-stat-value">11+</span>
+            <span class="lp-stat-label">Sectors</span>
         </div>
-        <div class="control-group">
-            <label for="industry-select">Industry</label>
-            <select id="industry-select"><option>Select sector first</option></select>
+        <div class="lp-stat-card">
+            <span class="lp-stat-value">70+</span>
+            <span class="lp-stat-label">Industries</span>
         </div>
-        <div class="control-group">
-            <label for="sort-select">Sort By</label>
-            <select id="sort-select">
-                <option value="divergence">Value Divergence</option>
-                <option value="mcap">Market Cap</option>
-                <option value="pe">P/E Ratio (low)</option>
-                <option value="pb">P/B Ratio (low)</option>
-                <option value="dividend">Dividend Yield (high)</option>
-                <option value="ev">EV/EBITDA (low)</option>
-            </select>
-            <button id="sort-info-btn" class="icon-btn" title="What is this?">?</button>
+        <div class="lp-stat-card">
+            <span class="lp-stat-value">6</span>
+            <span class="lp-stat-label">Sort Modes</span>
         </div>
-        <button id="load-btn" class="primary-btn">Load Stocks</button>
-        <div id="stock-list" class="stock-list"></div>
-        <div id="status-bar" class="status-bar">Ready</div>
-    </aside>
-    <div id="sidebar-overlay" class="sidebar-overlay"></div>
-
-    <!-- MAIN CONTENT -->
-    <main id="main-content">
-        <!-- EMPTY STATE -->
-        <div id="empty-state" class="empty-state">
-            <div class="empty-state-icon">&#128200;</div>
-            <p class="empty-state-title">Select a sector and industry to begin</p>
-            <p class="empty-state-sub">Pick a sector from the sidebar, then load stocks to see financial analysis.</p>
+        <div class="lp-stat-card">
+            <span class="lp-stat-value">Live</span>
+            <span class="lp-stat-label">Data Source</span>
         </div>
-        <!-- BACK BUTTON -->
-        <button id="back-btn" class="back-btn" style="display:none;">&#8592; Back to Sector View</button>
-        <!-- SWIPE INDICATOR -->
-        <div id="swipe-indicator" class="swipe-indicator" style="display:none;">
-            <button class="swipe-arrow" id="swipe-prev">&#8592;</button>
-            <span id="swipe-label" class="swipe-label"></span>
-            <button class="swipe-arrow" id="swipe-next">&#8594;</button>
-        </div>
-        <!-- KPI CARDS -->
-        <div id="kpi-row">
-            <div class="kpi-card" id="kpi-industry"><div class="kpi-label">Industry</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-ind-size"><div class="kpi-label">Industry Size</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-mcap"><div class="kpi-label">Market Cap</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-price"><div class="kpi-label">Price</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-pe"><div class="kpi-label">P/E</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-signal"><div class="kpi-label">Signal</div><div class="kpi-value">—</div></div>
-        </div>
-
-        <!-- CHART AREA -->
-        <div id="chart-area">
-            <div id="charts-left">
-                <div id="chart-revenue" class="chart-box"></div>
-                <div id="chart-divergence" class="chart-box"></div>
-                <div id="chart-candle" class="chart-box"></div>
-                <!-- Timeline buttons -->
-                <div id="timeline-bar">
-                    <span class="tl-label">Timeline:</span>
-                    <button class="tl-btn" data-period="1mo">1M</button>
-                    <button class="tl-btn" data-period="3mo">3M</button>
-                    <button class="tl-btn" data-period="6mo">6M</button>
-                    <button class="tl-btn active" data-period="1y">1Y</button>
-                    <button class="tl-btn" data-period="2y">2Y</button>
-                    <button class="tl-btn" data-period="3y">3Y</button>
-                    <button class="tl-btn" data-period="4y">4Y</button>
-                </div>
-            </div>
-            <div id="charts-right">
-                <div id="chart-pie" class="chart-box"></div>
-            </div>
-        </div>
-
-    </main>
-
-    <!-- NEWS PANEL -->
-    <aside id="news-panel" class="news-panel">
-        <div class="news-header">
-            <div class="drag-handle"></div>
-            <h3>News Intelligence</h3>
-            <button id="news-close" class="icon-btn" aria-label="Close">&times;</button>
-        </div>
-        <div id="news-list" class="news-list"></div>
-    </aside>
-</div>
-
-<!-- SORT EXPLANATION MODAL -->
-<div id="sort-modal" class="modal" role="dialog" aria-modal="true" style="display:none;">
-    <div class="modal-content">
-        <button class="modal-close" id="sort-modal-close" aria-label="Close">&times;</button>
-        <h3 id="sort-modal-title"></h3>
-        <p id="sort-modal-body"></p>
     </div>
-</div>
+</section>
 
-<!-- NEWS POPUP MODAL -->
-<div id="news-modal" class="modal" role="dialog" aria-modal="true" style="display:none;">
-    <div class="modal-content news-modal-content">
-        <button class="modal-close" id="news-modal-close" aria-label="Close">&times;</button>
-        <div class="sentiment-badge" id="news-modal-badge"></div>
-        <h3 id="news-modal-title"></h3>
-        <p id="news-modal-impact"></p>
+<!-- ── FEATURE CARDS ──────────────────────────── -->
+<section class="lp-features">
+    <h2 class="lp-section-heading">What You Get</h2>
+    <div class="lp-features-grid">
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon" aria-hidden="true">&#9673;</span>
+            <h3 class="lp-feature-title">Interactive Sector &amp; Industry Drilldown</h3>
+            <p class="lp-feature-desc">Browse all NSE sectors via clickable pie charts. Drill into sub-industries with a single click.</p>
+        </div>
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon" aria-hidden="true">&#8599;</span>
+            <h3 class="lp-feature-title">Proprietary Value Divergence Score</h3>
+            <p class="lp-feature-desc">Compare revenue growth vs price growth to find stocks the market has mispriced.</p>
+        </div>
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon" aria-hidden="true">&#8693;</span>
+            <h3 class="lp-feature-title">6 Intelligent Sort Modes</h3>
+            <p class="lp-feature-desc">Rank by Value Divergence, Market Cap, P/E, P/B, Dividend Yield, or EV/EBITDA.</p>
+        </div>
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon" aria-hidden="true">&#9672;</span>
+            <h3 class="lp-feature-title">Real-Time News with Sentiment</h3>
+            <p class="lp-feature-desc">Live Google News feed with Bullish, Bearish, and Neutral classification for every stock.</p>
+        </div>
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon" aria-hidden="true">&#8801;</span>
+            <h3 class="lp-feature-title">Revenue &amp; Peer Comparison Charts</h3>
+            <p class="lp-feature-desc">Line charts comparing revenue performance against the top 5 peers in the same industry.</p>
+        </div>
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon" aria-hidden="true">&#9889;</span>
+            <h3 class="lp-feature-title">Live KPI Dashboard</h3>
+            <p class="lp-feature-desc">Six metric cards with instant Undervalued, Fair Value, or Overvalued signals at a glance.</p>
+        </div>
     </div>
-</div>
+</section>
 
-<!-- LOADING OVERLAY -->
-<div id="loading-overlay" role="status" aria-live="assertive" style="display:none;">
-    <div class="spinner"></div>
-    <p id="loading-text">Loading...</p>
-</div>
+<!-- ── HOW IT WORKS ───────────────────────────── -->
+<section class="lp-how" id="how-it-works">
+    <h2 class="lp-section-heading">How It Works</h2>
+    <div class="lp-steps">
+        <div class="lp-step">
+            <span class="lp-step-num">01</span>
+            <h3 class="lp-step-title">Choose a Sector &amp; Industry</h3>
+            <p class="lp-step-desc">Select from 11+ NSE sectors, then drill into 70+ sub-industries to narrow your search.</p>
+        </div>
+        <div class="lp-step-line" aria-hidden="true"></div>
+        <div class="lp-step">
+            <span class="lp-step-num">02</span>
+            <h3 class="lp-step-title">Sort, Compare, and Analyze</h3>
+            <p class="lp-step-desc">Load stocks, sort by 6 different metrics, and click any stock to see its full analysis dashboard.</p>
+        </div>
+        <div class="lp-step-line" aria-hidden="true"></div>
+        <div class="lp-step">
+            <span class="lp-step-num">03</span>
+            <h3 class="lp-step-title">Read Signals, Check News</h3>
+            <p class="lp-step-desc">See divergence scores, peer comparisons, and sentiment-classified news — all in one view.</p>
+        </div>
+    </div>
+</section>
 
-<script src="js/theme.js" defer></script>
-<script src="js/sentiment.js" defer></script>
-<script src="js/charts.js" defer></script>
-<script src="js/app.js" defer></script>
+<!-- ── FINAL CTA ──────────────────────────────── -->
+<section class="lp-cta">
+    <h2 class="lp-cta-heading">Ready to find your next investment?</h2>
+    <a href="app.html" class="primary-btn lp-btn-launch">Launch App</a>
+</section>
+
+</main>
+
+<!-- ── FOOTER ─────────────────────────────────── -->
+<footer class="lp-footer">
+    <p class="lp-footer-main">Indian Stock Analyser &middot; Built with yfinance, Plotly &amp; Google News RSS</p>
+    <p class="lp-footer-disclaimer">Data provided by Yahoo Finance. Not financial advice.</p>
+    <p class="lp-footer-credit">Made by Pratik</p>
+</footer>
+
+<script src="js/theme.js"></script>
+<script>document.addEventListener('DOMContentLoaded', () => Theme.init());</script>
 </body>
 </html>
