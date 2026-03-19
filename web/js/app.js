@@ -49,7 +49,8 @@ const App = (() => {
             const resp = await apiFetch('/api/industries');
             industries = resp.sectors || {};
             populateSectors();
-            setStatus('Ready');
+            showSectorTiles();
+            setStatus('Ready — pick a sector to begin');
         } catch (e) {
             // Fix #11: detect network errors
             if (e instanceof TypeError) {
@@ -57,11 +58,6 @@ const App = (() => {
             } else {
                 setStatus('Failed to load industries: ' + e.message);
             }
-        }
-
-        // Mobile sidebar — start open so user can pick sector
-        if (window.innerWidth <= 900) {
-            document.getElementById('sidebar').classList.add('open');
         }
 
         // Event listeners
@@ -189,10 +185,10 @@ const App = (() => {
     async function onSectorChange() {
         const sector = document.getElementById('sector-select').value;
         if (!sector) {
-            // Fix #10: restore empty state when sector selection is cleared
             showEmptyState();
             return;
         }
+        hideEmptyState();
 
         // Fix #5: abort previous sector request
         if (currentSectorController) currentSectorController.abort();
@@ -591,18 +587,16 @@ const App = (() => {
         openModal('news-modal');
     }
 
-    // ── BACK BUTTON (fix #16: async + await) ────
+    // ── BACK BUTTON ────────────────────────────────
     async function onBackToSector() {
-        // Hide swipe indicator
         document.getElementById('swipe-indicator').style.display = 'none';
 
-        // If viewing a stock → go back to industry pie
+        // Stock analysis → back to industry pie
         if (analyzeData && currentSymbol) {
             document.getElementById('chart-area').classList.add('pie-only');
             analyzeData = null;
             currentSymbol = null;
 
-            // Re-render industry stocks pie
             const industry = document.getElementById('industry-select').value;
             if (industry && stockList.length > 0) {
                 const pieItems = stockList
@@ -614,7 +608,6 @@ const App = (() => {
                     if (item.symbol) analyzeStock(item.symbol);
                 });
 
-                // Restore industry KPIs
                 const totalMcap = stockList.reduce((sum, s) => sum + (s.marketCap || 0), 0);
                 setKPI('industry', industry);
                 setKPI('ind-size', fmtInr(totalMcap));
@@ -624,30 +617,32 @@ const App = (() => {
                 setKPI('signal', '\u2014');
             }
 
-            document.getElementById('back-btn').textContent = '\u2190 Back to Sector';
+            document.getElementById('back-btn').textContent = '\u2190 Back to Industries';
             pieLevel = 2;
             setStatus(`${industry} \u2014 click a stock to analyze`);
             return;
         }
 
-        // If viewing industry pie → go back to sector pie
-        document.getElementById('chart-area').classList.add('pie-only');
-        document.getElementById('back-btn').style.display = 'none';
-        document.getElementById('news-panel').classList.remove('visible');
-        stockList = [];
-        stockDetails = {};
-        document.getElementById('stock-list').innerHTML = '';
+        // Industry pie/stocks → back to industry tiles for the sector
+        if (stockList.length > 0 || pieLevel === 2) {
+            document.getElementById('news-panel').classList.remove('visible');
+            stockList = [];
+            stockDetails = {};
+            document.getElementById('stock-list').innerHTML = '';
+            ['industry', 'ind-size', 'mcap', 'price', 'pe', 'signal'].forEach(k => setKPI(k, '\u2014'));
 
-        const sector = document.getElementById('sector-select').value;
-        if (sector) {
-            // Fix #16: await the async call with catch
-            try {
-                await onSectorChange();
-            } catch (e) {
-                setStatus('Error returning to sector: ' + e.message);
+            const sector = document.getElementById('sector-select').value;
+            if (sector) {
+                showIndustryTiles(sector);
+            } else {
+                showSectorTiles();
             }
+            return;
         }
 
+        // Industry tiles → back to sector tiles
+        showSectorTiles();
+        document.getElementById('sector-select').value = '';
         ['industry', 'ind-size', 'mcap', 'price', 'pe', 'signal'].forEach(k => setKPI(k, '\u2014'));
     }
 
@@ -732,16 +727,104 @@ const App = (() => {
     }
 
     function hideEmptyState() {
-        const el = document.getElementById('empty-state');
+        const el = document.getElementById('tile-nav');
         if (el) el.style.display = 'none';
     }
 
-    // Fix #10: restore empty state on reset
     function showEmptyState() {
-        const el = document.getElementById('empty-state');
-        if (el) el.style.display = '';
         document.getElementById('stock-list').innerHTML = '';
         document.getElementById('chart-area').classList.add('pie-only');
+        showSectorTiles();
+    }
+
+    // ── SECTOR TILE ICONS ────────────────────────
+    const SECTOR_ICONS = {
+        'Technology': '\u2318',
+        'Financial Services': '\u2616',
+        'Healthcare': '\u2695',
+        'Consumer Cyclical': '\u2668',
+        'Consumer Defensive': '\u229B',
+        'Industrials': '\u2692',
+        'Energy': '\u26A1',
+        'Basic Materials': '\u2B21',
+        'Communication Services': '\u2706',
+        'Real Estate': '\u2302',
+        'Utilities': '\u2301',
+    };
+
+    // ── TILE NAVIGATION ─────────────────────────
+    function showSectorTiles() {
+        const nav = document.getElementById('tile-nav');
+        nav.style.display = '';
+        nav.innerHTML = '';
+        document.getElementById('chart-area').classList.add('pie-only');
+        document.getElementById('back-btn').style.display = 'none';
+        document.getElementById('swipe-indicator').style.display = 'none';
+        document.getElementById('news-panel').classList.remove('visible');
+
+        const heading = document.createElement('h2');
+        heading.className = 'tile-heading';
+        heading.textContent = 'Pick a Sector';
+        nav.appendChild(heading);
+
+        const grid = document.createElement('div');
+        grid.className = 'tile-grid';
+
+        const sectors = Object.keys(industries).sort();
+        for (const sector of sectors) {
+            const count = industries[sector]?.length || 0;
+            const tile = document.createElement('button');
+            tile.className = 'tile';
+            tile.innerHTML = `<span class="tile-icon">${SECTOR_ICONS[sector] || '\u25C6'}</span>
+                <span class="tile-name">${escHtml(sector)}</span>
+                <span class="tile-meta">${count} industries</span>`;
+            tile.addEventListener('click', () => {
+                document.getElementById('sector-select').value = sector;
+                populateIndustries(sector);
+                showIndustryTiles(sector);
+            });
+            grid.appendChild(tile);
+        }
+        nav.appendChild(grid);
+    }
+
+    function showIndustryTiles(sector) {
+        const nav = document.getElementById('tile-nav');
+        nav.style.display = '';
+        nav.innerHTML = '';
+        document.getElementById('chart-area').classList.add('pie-only');
+        document.getElementById('back-btn').style.display = 'block';
+        document.getElementById('back-btn').textContent = '\u2190 Back to Sectors';
+        document.getElementById('swipe-indicator').style.display = 'none';
+
+        const heading = document.createElement('h2');
+        heading.className = 'tile-heading';
+        heading.textContent = sector;
+        nav.appendChild(heading);
+
+        const sub = document.createElement('p');
+        sub.className = 'tile-subheading';
+        sub.textContent = 'Pick an industry to load stocks';
+        nav.appendChild(sub);
+
+        const grid = document.createElement('div');
+        grid.className = 'tile-grid tile-grid-sm';
+
+        const list = industries[sector] || [];
+        for (const industry of list) {
+            const tile = document.createElement('button');
+            tile.className = 'tile tile-sm';
+            tile.innerHTML = `<span class="tile-name">${escHtml(industry)}</span>`;
+            tile.addEventListener('click', () => {
+                document.getElementById('industry-select').value = industry;
+                hideEmptyState();
+                onLoadStocks();
+            });
+            grid.appendChild(tile);
+        }
+        nav.appendChild(grid);
+
+        setStatus(`${sector} \u2014 ${list.length} industries`);
     }
 
     // Show a visible error message in the chart area
