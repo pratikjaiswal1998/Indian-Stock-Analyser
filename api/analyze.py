@@ -8,7 +8,6 @@ import math
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import requests
 import yfinance as yf
 import pandas as pd
 
@@ -37,27 +36,6 @@ def _parse_year(col):
         return ts.year
     except Exception:
         return None
-
-
-class _TimeoutAdapter(requests.adapters.HTTPAdapter):
-    """HTTPAdapter that enforces a default timeout on all requests."""
-
-    def __init__(self, timeout=15, **kwargs):
-        self._timeout = timeout
-        super().__init__(**kwargs)
-
-    def send(self, *args, **kwargs):
-        kwargs.setdefault("timeout", self._timeout)
-        return super().send(*args, **kwargs)
-
-
-def _make_session(timeout=15):
-    """Create a requests Session with default timeout for yfinance."""
-    s = requests.Session()
-    adapter = _TimeoutAdapter(timeout=timeout)
-    s.mount("https://", adapter)
-    s.mount("http://", adapter)
-    return s
 
 
 class handler(BaseHTTPRequestHandler):
@@ -113,8 +91,7 @@ class handler(BaseHTTPRequestHandler):
             quarterly = None
 
             try:
-                sess = _make_session()
-                tk = yf.Ticker(t, session=sess)
+                tk = yf.Ticker(t)
             except Exception as exc:
                 return t, annual, quarterly, f"{t}: Ticker init failed — {type(exc).__name__}: {exc}"
 
@@ -190,8 +167,7 @@ class handler(BaseHTTPRequestHandler):
         price_quarterly = {}
 
         try:
-            sess = _make_session()
-            tk_sym = yf.Ticker(symbol, session=sess)
+            tk_sym = yf.Ticker(symbol)
             hist = tk_sym.history(period="4y")
             if hist is not None and not hist.empty:
                 hist.index = pd.to_datetime(hist.index)
@@ -236,8 +212,7 @@ class handler(BaseHTTPRequestHandler):
                     if safe is not None:
                         financials["revenue_growth"] = round(safe, 1)
 
-            sess = _make_session()
-            tk_sym = yf.Ticker(symbol, session=sess)
+            tk_sym = yf.Ticker(symbol)
             inc = tk_sym.income_stmt
             if inc is not None and not inc.empty:
                 for lbl in ["Net Income", "Net Income Common Stockholders"]:
