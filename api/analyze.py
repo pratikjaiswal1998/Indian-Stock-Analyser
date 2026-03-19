@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import json
+import os
 import re
 import math
 import logging
@@ -12,6 +13,9 @@ import yfinance as yf
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# Ensure yfinance cache writes go to /tmp (Vercel filesystem is read-only)
+os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 
 SYMBOL_RE = re.compile(r'^[A-Z0-9.\-]{1,20}$')
 MAX_PEERS = 5
@@ -82,7 +86,9 @@ class handler(BaseHTTPRequestHandler):
             self._json_response(200, result)
         except Exception as e:
             logger.exception("analyze: unhandled error for symbol=%s", symbol)
-            self._json_response(500, {"error": "Internal server error"})
+            self._json_response(500, {
+                "error": f"{type(e).__name__}: {e}",
+            })
 
     # Catch-all for unsupported methods
     def do_POST(self):
@@ -96,21 +102,21 @@ class handler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
     def _fetch_data(self, symbol, all_tickers):
         warnings = []
-        session = _make_session()
-
-        # Build ONE Ticker object per symbol and reuse
-        tickers = {}
-        for t in all_tickers:
-            tickers[t] = yf.Ticker(t, session=session)
 
         annual_revenue = {}
         quarterly_revenue = {}
 
         # --- Parallelize yfinance revenue calls ---
+        # Each thread creates its own session+Ticker (requests.Session is NOT thread-safe)
         def _fetch_revenue(t):
-            tk = tickers[t]
             annual = None
             quarterly = None
+
+            try:
+                sess = _make_session()
+                tk = yf.Ticker(t, session=sess)
+            except Exception as exc:
+                return t, annual, quarterly, f"{t}: Ticker init failed — {type(exc).__name__}: {exc}"
 
             try:
                 inc = tk.income_stmt
@@ -128,11 +134,13 @@ class handler(BaseHTTPRequestHandler):
                                 continue
                             val = row[col]
                             if pd.notna(val):
-                                yearly[str(yr)] = float(val)
+                                safe = _safe_float(val)
+                                if safe is not None:
+                                    yearly[str(yr)] = safe
                         if yearly:
                             annual = yearly
             except Exception as exc:
-                return t, annual, quarterly, f"{t}: annual revenue fetch failed — {type(exc).__name__}"
+                return t, annual, quarterly, f"{t}: annual revenue fetch failed — {type(exc).__name__}: {exc}"
 
             try:
                 qi = tk.quarterly_income_stmt
@@ -150,57 +158,72 @@ class handler(BaseHTTPRequestHandler):
                                 try:
                                     dt = pd.Timestamp(col)
                                     qkey = f"{dt.year}-Q{(dt.month - 1) // 3 + 1}"
-                                    qdata[qkey] = float(val)
+                                    safe = _safe_float(val)
+                                    if safe is not None:
+                                        qdata[qkey] = safe
                                 except Exception:
                                     continue
                         if qdata:
                             quarterly = qdata
             except Exception as exc:
-                return t, annual, quarterly, f"{t}: quarterly revenue fetch failed — {type(exc).__name__}"
+                return t, annual, quarterly, f"{t}: quarterly revenue fetch failed — {type(exc).__name__}: {exc}"
 
             return t, annual, quarterly, None
 
         with ThreadPoolExecutor(max_workers=6) as pool:
             futures = {pool.submit(_fetch_revenue, t): t for t in all_tickers}
             for fut in as_completed(futures):
-                t, annual, quarterly, warn = fut.result()
-                if annual:
-                    annual_revenue[t] = annual
-                if quarterly:
-                    quarterly_revenue[t] = quarterly
-                if warn:
-                    warnings.append(warn)
+                try:
+                    t, annual, quarterly, warn = fut.result()
+                    if annual:
+                        annual_revenue[t] = annual
+                    if quarterly:
+                        quarterly_revenue[t] = quarterly
+                    if warn:
+                        warnings.append(warn)
+                except Exception as exc:
+                    warnings.append(f"Revenue thread failed — {type(exc).__name__}: {exc}")
 
-        # --- Price history (selected stock only, reuse cached Ticker) ---
+        # --- Price history (selected stock only, fresh session) ---
         ohlc = []
         price_yearly = {}
         price_quarterly = {}
 
         try:
-            tk_sym = tickers[symbol]
+            sess = _make_session()
+            tk_sym = yf.Ticker(symbol, session=sess)
             hist = tk_sym.history(period="4y")
             if hist is not None and not hist.empty:
                 hist.index = pd.to_datetime(hist.index)
 
                 for dt, row in hist.iterrows():
-                    ohlc.append({
-                        "date": dt.strftime("%Y-%m-%d"),
-                        "open": round(float(row["Open"]), 2),
-                        "high": round(float(row["High"]), 2),
-                        "low": round(float(row["Low"]), 2),
-                        "close": round(float(row["Close"]), 2),
-                    })
+                    o = _safe_float(row["Open"])
+                    h = _safe_float(row["High"])
+                    lo = _safe_float(row["Low"])
+                    c = _safe_float(row["Close"])
+                    if o is not None and h is not None and lo is not None and c is not None:
+                        ohlc.append({
+                            "date": dt.strftime("%Y-%m-%d"),
+                            "open": round(o, 2),
+                            "high": round(h, 2),
+                            "low": round(lo, 2),
+                            "close": round(c, 2),
+                        })
 
                 for yr, gdf in hist.groupby(hist.index.year):
-                    price_yearly[str(yr)] = round(float(gdf["Close"].mean()), 2)
+                    mean_val = _safe_float(gdf["Close"].mean())
+                    if mean_val is not None:
+                        price_yearly[str(yr)] = round(mean_val, 2)
 
                 for (yr, qtr), gdf in hist.groupby(
                         [hist.index.year, (hist.index.month - 1) // 3 + 1]):
-                    price_quarterly[f"{yr}-Q{qtr}"] = round(float(gdf["Close"].mean()), 2)
+                    mean_val = _safe_float(gdf["Close"].mean())
+                    if mean_val is not None:
+                        price_quarterly[f"{yr}-Q{qtr}"] = round(mean_val, 2)
         except Exception as exc:
-            warnings.append(f"Price history fetch failed — {type(exc).__name__}")
+            warnings.append(f"Price history fetch failed — {type(exc).__name__}: {exc}")
 
-        # --- Financials for news impact (reuse cached Ticker) ---
+        # --- Financials for news impact (fresh session) ---
         financials = {}
         try:
             sel_rev = annual_revenue.get(symbol, {})
@@ -213,7 +236,8 @@ class handler(BaseHTTPRequestHandler):
                     if safe is not None:
                         financials["revenue_growth"] = round(safe, 1)
 
-            tk_sym = tickers[symbol]
+            sess = _make_session()
+            tk_sym = yf.Ticker(symbol, session=sess)
             inc = tk_sym.income_stmt
             if inc is not None and not inc.empty:
                 for lbl in ["Net Income", "Net Income Common Stockholders"]:
@@ -226,7 +250,9 @@ class handler(BaseHTTPRequestHandler):
                                 continue
                             val = pat_row[col]
                             if pd.notna(val):
-                                pat_vals[str(yr)] = float(val)
+                                safe = _safe_float(val)
+                                if safe is not None:
+                                    pat_vals[str(yr)] = safe
                         if pat_vals:
                             yrs = sorted(pat_vals.keys())
                             financials["net_profit_cr"] = round(pat_vals[yrs[-1]] / 1e7, 0)
@@ -249,7 +275,7 @@ class handler(BaseHTTPRequestHandler):
                 if safe is not None:
                     financials["mcap_cr"] = round(safe / 1e7, 0)
         except Exception as exc:
-            warnings.append(f"Financials fetch failed — {type(exc).__name__}")
+            warnings.append(f"Financials fetch failed — {type(exc).__name__}: {exc}")
 
         result = {
             "annual_revenue": annual_revenue,
@@ -268,4 +294,4 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=600")
         self.end_headers()
-        self.wfile.write(json.dumps(data, default=str).encode())
+        self.wfile.write(json.dumps(data, default=str, allow_nan=False).encode())

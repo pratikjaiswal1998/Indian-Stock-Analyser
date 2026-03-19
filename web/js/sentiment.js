@@ -57,12 +57,20 @@ const Sentiment = (() => {
 
     const NEGATION_PREFIXES = ["no ", "not ", "without ", "lack of ", "failed to ", "unable to "];
 
+    // Fix #32: init() is now a no-op; dictionary is lazy-loaded on first classify() call
     async function init() {
+        // Lazy load — dictionary will be fetched on first classify() call via ensureLoaded()
+    }
+
+    // Fix #32 + #34: lazy-load dictionary with resp.ok check and dedup
+    async function ensureLoaded() {
         if (loaded) return;
         if (_initPromise) return _initPromise;
         _initPromise = (async () => {
             try {
-                const resp = await fetch('data/lm_dictionary.json');
+                const resp = await fetch('./data/lm_dictionary.json');
+                // Fix #34: check resp.ok before .json()
+                if (!resp.ok) throw new Error('Failed to load sentiment dictionary');
                 const data = await resp.json();
                 lmPos = new Set(data.positive || []);
                 lmNeg = new Set(data.negative || []);
@@ -76,7 +84,8 @@ const Sentiment = (() => {
 
     function classify(text) {
         if (!text) return { sentiment: 'neutral', keywords: [] };
-        if (!loaded) init();
+        // Fix #32: trigger lazy load in background if not loaded yet (non-blocking)
+        if (!loaded) ensureLoaded();
         const lower = text.toLowerCase();
         let bullScore = 0, bearScore = 0;
         const bullHits = [], bearHits = [];

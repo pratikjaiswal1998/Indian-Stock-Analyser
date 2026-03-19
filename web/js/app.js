@@ -427,8 +427,8 @@ const App = (() => {
         showLoading('Analyzing...');
 
         try {
-            // Fetch analyze + news in parallel, passing signal
-            const [dataResp, newsResp] = await Promise.all([
+            // Fetch analyze + news in parallel (allSettled so news failure won't block)
+            const [analyzeResult, newsResult] = await Promise.allSettled([
                 apiFetch(`/api/analyze?symbol=${encodeURIComponent(symbol)}&peers=${encodeURIComponent(peers.join(','))}`, signal),
                 apiFetch(`/api/news?stock=${encodeURIComponent((info.name || symbol).replace('.NS', ''))}`, signal),
             ]);
@@ -436,6 +436,20 @@ const App = (() => {
             // Fix #4: check if aborted after awaits
             if (signal.aborted) return;
 
+            // If analyze failed, show error prominently in chart area
+            if (analyzeResult.status === 'rejected') {
+                const err = analyzeResult.reason;
+                if (err.name === 'AbortError') return;
+                if (err instanceof TypeError) {
+                    showChartError('No internet connection. Please check your network.');
+                } else {
+                    showChartError('Failed to load analysis: ' + err.message);
+                }
+                setStatus('Error analyzing ' + (info.name || symbol));
+                return;
+            }
+
+            const dataResp = analyzeResult.value;
             analyzeData = dataResp;
             analyzeData.stockDetails = stockDetails;
 
@@ -464,18 +478,19 @@ const App = (() => {
                 if (item.symbol) analyzeStock(item.symbol);
             });
 
-            // News panel
+            // News panel (graceful — may have failed independently)
+            const newsResp = newsResult.status === 'fulfilled' ? newsResult.value : { articles: [] };
             showNews(newsResp.articles || [], dataResp.financials || {});
 
             setStatus(`${info.name || symbol} \u2014 ${peers.length} peer(s) charted`);
         } catch (e) {
             if (e.name === 'AbortError') return;
-            // Fix #11: detect network errors
             if (e instanceof TypeError) {
-                setStatus('No internet connection. Please check your network.');
+                showChartError('No internet connection. Please check your network.');
             } else {
-                setStatus('Error analyzing: ' + e.message);
+                showChartError('Error analyzing: ' + e.message);
             }
+            setStatus('Error analyzing ' + (info.name || symbol));
         } finally {
             // Fix #9: hideLoading in finally block
             hideLoading();
@@ -727,6 +742,27 @@ const App = (() => {
         if (el) el.style.display = '';
         document.getElementById('stock-list').innerHTML = '';
         document.getElementById('chart-area').classList.add('pie-only');
+    }
+
+    // Show a visible error message in the chart area
+    function showChartError(msg) {
+        document.getElementById('chart-area').classList.remove('pie-only');
+        document.getElementById('back-btn').style.display = 'block';
+        document.getElementById('back-btn').textContent = '\u2190 Back to Industry';
+        for (const id of ['chart-revenue', 'chart-divergence', 'chart-candle']) {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '';
+        }
+        const pie = document.getElementById('chart-pie');
+        if (pie) {
+            pie.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center;">
+                <div>
+                    <div style="font-size:32px;margin-bottom:12px;">&#9888;</div>
+                    <div style="color:var(--neon-red);font-size:14px;font-weight:600;margin-bottom:8px;">Analysis Failed</div>
+                    <div style="color:var(--text-dim);font-size:12px;line-height:1.5;">${escHtml(msg)}</div>
+                </div>
+            </div>`;
+        }
     }
 
     // ── SWIPE NAVIGATION (fixes #22, #23, #24) ──

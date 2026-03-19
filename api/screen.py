@@ -2,10 +2,14 @@
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import json
+import os
 import re
 import logging
 
 import yfinance as yf
+
+# Ensure yfinance cache writes go to /tmp (Vercel filesystem is read-only)
+os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 from yfinance.screener.query import EquityQuery
 
 logger = logging.getLogger(__name__)

@@ -1,9 +1,11 @@
 /* ── Plotly Chart Rendering ────────────────────── */
 const Charts = (() => {
+    // Fix #30: extended COLORS array to 16 entries (pie shows up to 15 items)
     const COLORS = [
         '#00f0ff', '#00ff88', '#ffaa00', '#ff006e', '#a78bfa',
         '#38bdf8', '#fb923c', '#e879f9', '#22d3ee', '#facc15',
-        '#f472b6', '#34d399', '#c084fc', '#67e8f9', '#fbbf24',
+        '#f472b6', '#34d399', '#818cf8', '#f97316', '#06b6d4',
+        '#ec4899',
     ];
 
     let lastPieData = null;
@@ -11,8 +13,8 @@ const Charts = (() => {
     let lastDivergenceData = null;
     let lastCandleData = null;
 
-    const _isMobile = () => window.matchMedia('(max-width: 900px)').matches
-        || (('ontouchstart' in window) && window.matchMedia('(pointer: coarse)').matches);
+    // Fix #27: removed 'ontouchstart' check, use only media query
+    const _isMobile = () => window.matchMedia('(max-width: 900px)').matches;
 
     function _layout(overrides = {}) {
         const t = Theme.plotlyLayout();
@@ -67,6 +69,7 @@ const Charts = (() => {
 
         const el = document.getElementById(containerId);
         Plotly.purge(el);
+        // Fix #29: add .catch() to Plotly.newPlot
         Plotly.newPlot(containerId, [trace], layout, _config()).then(() => {
             if (onClick) {
                 el.on('plotly_click', (data) => {
@@ -76,7 +79,7 @@ const Charts = (() => {
                     }
                 });
             }
-        });
+        }).catch(err => console.warn('Pie chart render failed:', err));
     }
 
     // ── REVENUE CHART ──────────────────────────
@@ -150,14 +153,17 @@ const Charts = (() => {
             dragmode: mobile ? false : undefined,
         });
 
+        // Fix #26: purge before newPlot; Fix #29: add .catch()
+        Plotly.purge(document.getElementById(containerId));
         if (traces.length > 0) {
-            Plotly.purge(document.getElementById(containerId));
-            Plotly.newPlot(containerId, traces, layout, _config());
+            Plotly.newPlot(containerId, traces, layout, _config())
+                .catch(err => console.warn('Revenue chart render failed:', err));
         } else {
             Plotly.newPlot(containerId, [], _layout({
                 title: { text: 'No revenue data available', font: { size: 12, color: '#64748b' } },
                 xaxis: { visible: false }, yaxis: { visible: false },
-            }), _config());
+            }), _config())
+                .catch(err => console.warn('Revenue empty chart render failed:', err));
         }
     }
 
@@ -197,10 +203,13 @@ const Charts = (() => {
         }
 
         if (!hasData) {
+            // Fix #26: purge before newPlot; Fix #29: add .catch()
+            Plotly.purge(document.getElementById(containerId));
             Plotly.newPlot(containerId, [], _layout({
                 title: { text: 'Not enough overlapping data', font: { size: 12, color: '#64748b' } },
                 xaxis: { visible: false }, yaxis: { visible: false },
-            }), _config());
+            }), _config())
+                .catch(err => console.warn('Divergence empty chart render failed:', err));
             return { signal: null };
         }
 
@@ -256,7 +265,9 @@ const Charts = (() => {
         });
 
         Plotly.purge(document.getElementById(containerId));
-        Plotly.newPlot(containerId, traces, layout, _config());
+        // Fix #29: add .catch()
+        Plotly.newPlot(containerId, traces, layout, _config())
+            .catch(err => console.warn('Divergence chart render failed:', err));
 
         // Compute signal
         const n = revVals.length;
@@ -278,10 +289,13 @@ const Charts = (() => {
         const { ohlc, symbol, stockDetails } = data;
 
         if (!ohlc || ohlc.length === 0) {
+            // Fix #26: purge before newPlot; Fix #29: add .catch()
+            Plotly.purge(document.getElementById(containerId));
             Plotly.newPlot(containerId, [], _layout({
                 title: { text: 'No price history available', font: { size: 12, color: '#64748b' } },
                 xaxis: { visible: false }, yaxis: { visible: false },
-            }), _config());
+            }), _config())
+                .catch(err => console.warn('Candlestick empty chart render failed:', err));
             return;
         }
 
@@ -324,7 +338,9 @@ const Charts = (() => {
         });
 
         Plotly.purge(document.getElementById(containerId));
-        Plotly.newPlot(containerId, [trace], layout, _config());
+        // Fix #29: add .catch()
+        Plotly.newPlot(containerId, [trace], layout, _config())
+            .catch(err => console.warn('Candlestick chart render failed:', err));
     }
 
     function _weeklyResample(data) {
@@ -354,11 +370,19 @@ const Charts = (() => {
         if (lastCandleData) renderCandlestick(lastCandleData.containerId, lastCandleData.data, lastCandleData.period);
     }
 
+    // Fix #31: clearCache function to null out last*Data references
+    function clearCache() {
+        lastPieData = null;
+        lastRevenueData = null;
+        lastDivergenceData = null;
+        lastCandleData = null;
+    }
+
     let _resizeTimer;
     window.addEventListener('resize', () => {
         clearTimeout(_resizeTimer);
         _resizeTimer = setTimeout(reRenderAll, 250);
     });
 
-    return { renderPie, renderRevenue, renderDivergence, renderCandlestick, reRenderAll, COLORS };
+    return { renderPie, renderRevenue, renderDivergence, renderCandlestick, reRenderAll, clearCache, COLORS };
 })();
