@@ -38,7 +38,8 @@ class handler(BaseHTTPRequestHandler):
 
         try:
             if qtype == "sector":
-                stocks = self._screen_sector(value)
+                raw_debug = params.get("debug", [""])[0] == "1"
+                stocks = self._screen_sector(value, raw_debug=raw_debug)
             else:
                 stocks = self._screen_industry(value)
 
@@ -58,7 +59,7 @@ class handler(BaseHTTPRequestHandler):
     do_PUT = do_POST
     do_DELETE = do_POST
 
-    def _screen_sector(self, sector):
+    def _screen_sector(self, sector, raw_debug=False):
         q = EquityQuery("and", [
             EquityQuery("eq", ["region", "in"]),
             EquityQuery("eq", ["exchange", "NSI"]),
@@ -68,6 +69,8 @@ class handler(BaseHTTPRequestHandler):
         if resp is None:
             return []
         rows = resp.get("quotes", [])
+        if raw_debug and rows:
+            return rows[:1]  # return first raw row for debugging
         return self._normalize_rows(rows)
 
     def _screen_industry(self, industry):
