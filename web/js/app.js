@@ -219,6 +219,7 @@ const App = (() => {
                 .filter(i => i.value > 0)
                 .sort((a, b) => b.value - a.value);
 
+            document.getElementById('chart-area').style.display = '';
             document.getElementById('chart-area').classList.add('pie-only');
             document.getElementById('back-btn').style.display = 'none';
             document.getElementById('news-panel').classList.remove('visible');
@@ -282,20 +283,8 @@ const App = (() => {
 
             applySortAndRender();
 
-            // Pie level 2 — industry stocks by mcap
-            const pieItems = stockList
-                .filter(s => s.marketCap > 0)
-                .map(s => ({ label: (s.name || s.symbol).substring(0, 18), value: s.marketCap / 1e7, symbol: s.symbol }))
-                .sort((a, b) => b.value - a.value)
-                .slice(0, 15);
-
-            document.getElementById('chart-area').classList.add('pie-only');
             pieLevel = 2;
-            pieOrder = pieItems.map(i => i.symbol);
-
-            Charts.renderPie('chart-pie', pieItems, `Market Share \u2014 ${industry}`, (item) => {
-                if (item.symbol) analyzeStock(item.symbol);
-            });
+            showStockTiles(stockList, industry);
 
             // Show industry KPIs
             const totalMcap = stockList.reduce((sum, s) => sum + (s.marketCap || 0), 0);
@@ -305,10 +294,6 @@ const App = (() => {
             setKPI('price', '\u2014');
             setKPI('pe', '\u2014');
             setKPI('signal', '\u2014');
-
-            // Show back button to return to sector pie
-            document.getElementById('back-btn').style.display = 'block';
-            document.getElementById('back-btn').textContent = '\u2190 Back to Sector';
 
             // Fetch industry news in background
             apiFetch(`/api/news?stock=${encodeURIComponent(industry)}`)
@@ -354,7 +339,13 @@ const App = (() => {
         renderStockList(sorted);
     }
 
-    function onSortChange() { applySortAndRender(); }
+    function onSortChange() {
+        applySortAndRender();
+        const industry = document.getElementById('industry-select').value;
+        if (pieLevel === 2 && !analyzeData && industry) {
+            showStockTiles(stockList, industry);
+        }
+    }
 
     // Fix #2: renderStockList uses createElement + textContent instead of innerHTML
     function renderStockList(stocks) {
@@ -390,6 +381,9 @@ const App = (() => {
         const signal = currentAnalyzeController.signal;
 
         currentSymbol = symbol;
+
+        document.getElementById('tile-nav').style.display = 'none';
+        document.getElementById('chart-area').style.display = '';
 
         // Immediately close sidebar on mobile for instant feedback
         if (window.innerWidth <= 900) {
@@ -451,6 +445,7 @@ const App = (() => {
 
             // Switch to full chart layout
             document.getElementById('chart-area').classList.remove('pie-only');
+            document.getElementById('chart-area').classList.add('analysis-mode');
             document.getElementById('back-btn').style.display = 'block';
             document.getElementById('back-btn').textContent = '\u2190 Back to Industry';
 
@@ -462,17 +457,6 @@ const App = (() => {
 
             // Update swipe indicator
             updateSwipeIndicator(symbol);
-
-            // Render pie (industry)
-            const industry = info.industry;
-            const pieStocks = sameInd
-                .filter(s => s.marketCap > 0)
-                .map(s => ({ label: (s.name || s.symbol).substring(0, 18), value: s.marketCap / 1e7, symbol: s.symbol }))
-                .sort((a, b) => b.value - a.value)
-                .slice(0, 15);
-            Charts.renderPie('chart-pie', pieStocks, `Market Share \u2014 ${industry}`, (item) => {
-                if (item.symbol) analyzeStock(item.symbol);
-            });
 
             // News panel (graceful — may have failed independently)
             const newsResp = newsResult.status === 'fulfilled' ? newsResult.value : { articles: [] };
@@ -553,8 +537,27 @@ const App = (() => {
         const panel = document.getElementById('news-panel');
         const list = document.getElementById('news-list');
         // Fix #19: use CSS class instead of inline display
-        panel.classList.add('visible');
+        // On mobile, don't auto-show — use toggle button instead
+        if (window.innerWidth > 900) {
+            panel.classList.add('visible');
+        }
         list.innerHTML = '';
+
+        // Mobile news toggle button
+        const toggleBtn = document.getElementById('news-toggle-btn');
+        const toggleCount = document.getElementById('news-toggle-count');
+        if (window.innerWidth <= 900 && articles.length > 0) {
+            toggleBtn.style.display = 'inline-flex';
+            toggleCount.textContent = `(${articles.length})`;
+            // Remove old listener by cloning
+            const newBtn = toggleBtn.cloneNode(true);
+            toggleBtn.parentNode.replaceChild(newBtn, toggleBtn);
+            newBtn.addEventListener('click', () => {
+                panel.classList.toggle('visible');
+            });
+        } else if (toggleBtn) {
+            toggleBtn.style.display = 'none';
+        }
 
         if (articles.length === 0) {
             list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No recent news found</div>';
@@ -590,23 +593,19 @@ const App = (() => {
     // ── BACK BUTTON ────────────────────────────────
     async function onBackToSector() {
         document.getElementById('swipe-indicator').style.display = 'none';
+        // Hide mobile news toggle button
+        const newsToggle = document.getElementById('news-toggle-btn');
+        if (newsToggle) newsToggle.style.display = 'none';
 
-        // Stock analysis → back to industry pie
+        // Stock analysis → back to stock tiles
         if (analyzeData && currentSymbol) {
-            document.getElementById('chart-area').classList.add('pie-only');
+            document.getElementById('chart-area').classList.remove('analysis-mode');
             analyzeData = null;
             currentSymbol = null;
 
             const industry = document.getElementById('industry-select').value;
             if (industry && stockList.length > 0) {
-                const pieItems = stockList
-                    .filter(s => s.marketCap > 0)
-                    .map(s => ({ label: (s.name || s.symbol).substring(0, 18), value: s.marketCap / 1e7, symbol: s.symbol }))
-                    .sort((a, b) => b.value - a.value)
-                    .slice(0, 15);
-                Charts.renderPie('chart-pie', pieItems, `Market Share \u2014 ${industry}`, (item) => {
-                    if (item.symbol) analyzeStock(item.symbol);
-                });
+                showStockTiles(stockList, industry);
 
                 const totalMcap = stockList.reduce((sum, s) => sum + (s.marketCap || 0), 0);
                 setKPI('industry', industry);
@@ -617,7 +616,6 @@ const App = (() => {
                 setKPI('signal', '\u2014');
             }
 
-            document.getElementById('back-btn').textContent = '\u2190 Back to Industries';
             pieLevel = 2;
             setStatus(`${industry} \u2014 click a stock to analyze`);
             return;
@@ -825,6 +823,116 @@ const App = (() => {
         nav.appendChild(grid);
 
         setStatus(`${sector} \u2014 ${list.length} industries`);
+    }
+
+    function showStockTiles(stocks, industry) {
+        const SORT_LABELS = {
+            mcap: 'Market Cap',
+            pe: 'P/E Ratio',
+            pb: 'P/B Ratio',
+            dividend: 'Dividend Yield',
+            ev: 'EV/EBITDA',
+            divergence: 'Value Divergence',
+        };
+
+        const totalMcap = stocks.reduce((sum, s) => sum + (s.marketCap || 0), 0);
+        const maxMcap = stocks.reduce((max, s) => Math.max(max, s.marketCap || 0), 0);
+
+        // Re-sort stocks using current sort key for tile display
+        const sortKey = document.getElementById('sort-select').value;
+        const sorted = [...stocks];
+        sorted.sort((a, b) => {
+            switch (sortKey) {
+                case 'mcap': return (b.marketCap || 0) - (a.marketCap || 0);
+                case 'pe': return (a.trailingPE || 9999) - (b.trailingPE || 9999);
+                case 'pb': return (a.priceToBook || 9999) - (b.priceToBook || 9999);
+                case 'dividend': return (b.dividendYield || 0) - (a.dividendYield || 0);
+                case 'ev': return (a.evToEbitda || 9999) - (b.evToEbitda || 9999);
+                case 'divergence': {
+                    const divA = (a.divergenceScore != null) ? a.divergenceScore : -(a.marketCap || 0);
+                    const divB = (b.divergenceScore != null) ? b.divergenceScore : -(b.marketCap || 0);
+                    return divB - divA;
+                }
+                default: return (b.marketCap || 0) - (a.marketCap || 0);
+            }
+        });
+
+        const top = sorted.slice(0, 20);
+        pieOrder = top.map(s => s.symbol);
+
+        const nav = document.getElementById('tile-nav');
+        nav.style.display = '';
+        nav.innerHTML = '';
+        document.getElementById('chart-area').style.display = 'none';
+
+        const backBtn = document.getElementById('back-btn');
+        backBtn.style.display = 'block';
+        backBtn.textContent = '\u2190 Back to Industries';
+
+        const heading = document.createElement('h2');
+        heading.className = 'tile-heading';
+        heading.textContent = industry;
+        nav.appendChild(heading);
+
+        const sub = document.createElement('p');
+        sub.className = 'tile-subheading';
+        const sortLabel = SORT_LABELS[sortKey] || 'Market Cap';
+        sub.textContent = 'Top ' + top.length + ' stocks by ' + sortLabel;
+        nav.appendChild(sub);
+
+        const grid = document.createElement('div');
+        grid.className = 'stock-tile-grid';
+
+        for (const s of top) {
+            const mcap = s.marketCap || 0;
+            const sharePercent = totalMcap > 0 ? (mcap / totalMcap * 100) : 0;
+            const barWidth = maxMcap > 0 ? (mcap / maxMcap * 100) : 0;
+
+            const tile = document.createElement('div');
+            tile.className = 'stock-tile';
+
+            const nameEl = document.createElement('div');
+            nameEl.className = 'stock-tile-name';
+            const displayName = (s.name || s.symbol);
+            nameEl.textContent = displayName.length > 24 ? displayName.substring(0, 24) + '\u2026' : displayName;
+            tile.appendChild(nameEl);
+
+            const mcapEl = document.createElement('div');
+            mcapEl.className = 'stock-tile-mcap';
+            mcapEl.textContent = fmtInr(s.marketCap);
+            tile.appendChild(mcapEl);
+
+            const priceEl = document.createElement('div');
+            priceEl.className = 'stock-tile-price';
+            const price = s.currentPrice;
+            priceEl.textContent = price ? '\u20b9' + Number(price).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '\u2014';
+            tile.appendChild(priceEl);
+
+            const barTrack = document.createElement('div');
+            barTrack.className = 'stock-tile-bar-track';
+            const barFill = document.createElement('div');
+            barFill.className = 'stock-tile-bar-fill';
+            barFill.style.width = barWidth.toFixed(1) + '%';
+            barTrack.appendChild(barFill);
+            tile.appendChild(barTrack);
+
+            const shareEl = document.createElement('div');
+            shareEl.className = 'stock-tile-share';
+            shareEl.textContent = sharePercent.toFixed(1) + '% of industry';
+            tile.appendChild(shareEl);
+
+            tile.addEventListener('click', () => analyzeStock(s.symbol));
+            grid.appendChild(tile);
+        }
+
+        nav.appendChild(grid);
+
+        if (stocks.length > 20) {
+            const note = document.createElement('div');
+            note.className = 'stock-tile-note';
+            note.textContent = 'Showing top 20 of ' + stocks.length + '. Use sidebar for full list.';
+            nav.appendChild(note);
+        }
     }
 
     // Show a visible error message in the chart area

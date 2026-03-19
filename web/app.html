@@ -74,6 +74,8 @@
             <span id="swipe-label" class="swipe-label"></span>
             <button class="swipe-arrow" id="swipe-next">&#8594;</button>
         </div>
+        <!-- NEWS TOGGLE (mobile only) -->
+        <button id="news-toggle-btn" class="news-toggle-btn" style="display:none;">News <span id="news-toggle-count"></span></button>
         <!-- KPI CARDS -->
         <div id="kpi-row">
             <div class="kpi-card" id="kpi-industry"><div class="kpi-label">Industry</div><div class="kpi-value">—</div></div>
@@ -87,9 +89,9 @@
         <!-- CHART AREA -->
         <div id="chart-area">
             <div id="charts-left">
-                <div id="chart-revenue" class="chart-box"></div>
                 <div id="chart-divergence" class="chart-box"></div>
                 <div id="chart-candle" class="chart-box"></div>
+                <div id="chart-revenue" class="chart-box"></div>
                 <!-- Timeline buttons -->
                 <div id="timeline-bar">
                     <span class="tl-label">Timeline:</span>
