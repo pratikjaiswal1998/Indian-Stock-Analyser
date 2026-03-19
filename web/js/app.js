@@ -12,6 +12,7 @@ const App = (() => {
     let currentPeriod = '1y';
     let pieLevel = 0;         // 0=none, 1=sector, 2=industry
     let pieOrder = [];        // symbols in pie chart order (mcap desc)
+    let showTableView = false; // tile vs table toggle
 
     // AbortControllers for race condition prevention (fixes #4, #5)
     let currentAnalyzeController = null;
@@ -49,7 +50,30 @@ const App = (() => {
             const resp = await apiFetch('/api/industries');
             industries = resp.sectors || {};
             populateSectors();
-            showSectorTiles();
+            // URL deep-linking: check for sector/industry/symbol params
+            const params = new URLSearchParams(window.location.search);
+            const urlSector = params.get('sector');
+            const urlIndustry = params.get('industry');
+            const urlSymbol = params.get('symbol');
+
+            if (urlSector && industries[urlSector]) {
+                document.getElementById('sector-select').value = urlSector;
+                populateIndustries(urlSector);
+                if (urlIndustry) {
+                    document.getElementById('industry-select').value = urlIndustry;
+                    await onLoadStocks();
+                    if (urlSymbol) {
+                        await analyzeStock(urlSymbol);
+                    }
+                } else {
+                    showIndustryTiles(urlSector);
+                }
+            } else if (urlSymbol) {
+                // Direct symbol link without sector context
+                showSectorTiles();
+            } else {
+                showSectorTiles();
+            }
             setStatus('Ready — pick a sector to begin');
         } catch (e) {
             // Fix #11: detect network errors
@@ -294,6 +318,13 @@ const App = (() => {
             setKPI('price', '\u2014');
             setKPI('pe', '\u2014');
             setKPI('signal', '\u2014');
+            setKPI('pb', '\u2014');
+            setKPI('dy', '\u2014');
+            setKPI('ev', '\u2014');
+
+            // Update URL
+            const sector = document.getElementById('sector-select').value;
+            updateURL(sector, industry, null);
 
             // Fetch industry news in background
             apiFetch(`/api/news?stock=${encodeURIComponent(industry)}`)
@@ -401,6 +432,9 @@ const App = (() => {
         setKPI('price', info.currentPrice ? `\u20b9${Number(info.currentPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '\u2014');
         setKPI('pe', info.trailingPE ? info.trailingPE.toFixed(1) : '\u2014');
         setKPI('signal', '...');
+        setKPI('pb', info.priceToBook ? info.priceToBook.toFixed(1) : '\u2014');
+        setKPI('dy', info.dividendYield ? (info.dividendYield * 100).toFixed(2) + '%' : '\u2014');
+        setKPI('ev', info.evToEbitda ? info.evToEbitda.toFixed(1) : '\u2014');
 
         // Industry size
         const sameInd = stockList.filter(s => s.industry === info.industry);
@@ -461,6 +495,21 @@ const App = (() => {
             // News panel (graceful — may have failed independently)
             const newsResp = newsResult.status === 'fulfilled' ? newsResult.value : { articles: [] };
             showNews(newsResp.articles || [], dataResp.financials || {});
+
+            // Compute percentile badges
+            const pePctl = computePercentile(stockList, symbol, 'trailingPE', true);
+            const pbPctl = computePercentile(stockList, symbol, 'priceToBook', true);
+            const evPctl = computePercentile(stockList, symbol, 'evToEbitda', true);
+            const dyPctl = computePercentile(stockList, symbol, 'dividendYield', false);
+            setPercentile('pe', pePctl);
+            setPercentile('pb', pbPctl);
+            setPercentile('ev', evPctl);
+            setPercentile('dy', dyPctl);
+
+            // Update URL
+            const sector = document.getElementById('sector-select').value;
+            const industry = document.getElementById('industry-select').value;
+            updateURL(sector, industry, symbol);
 
             setStatus(`${info.name || symbol} \u2014 ${peers.length} peer(s) charted`);
         } catch (e) {
@@ -627,7 +676,7 @@ const App = (() => {
             stockList = [];
             stockDetails = {};
             document.getElementById('stock-list').innerHTML = '';
-            ['industry', 'ind-size', 'mcap', 'price', 'pe', 'signal'].forEach(k => setKPI(k, '\u2014'));
+            ['industry', 'ind-size', 'mcap', 'price', 'pe', 'signal', 'pb', 'dy', 'ev'].forEach(k => { setKPI(k, '\u2014'); setPercentile(k, null); });
 
             const sector = document.getElementById('sector-select').value;
             if (sector) {
@@ -641,7 +690,7 @@ const App = (() => {
         // Industry tiles → back to sector tiles
         showSectorTiles();
         document.getElementById('sector-select').value = '';
-        ['industry', 'ind-size', 'mcap', 'price', 'pe', 'signal'].forEach(k => setKPI(k, '\u2014'));
+        ['industry', 'ind-size', 'mcap', 'price', 'pe', 'signal', 'pb', 'dy', 'ev'].forEach(k => { setKPI(k, '\u2014'); setPercentile(k, null); });
     }
 
     // ── SORT INFO MODAL ─────────────────────────
@@ -759,6 +808,7 @@ const App = (() => {
         document.getElementById('back-btn').style.display = 'none';
         document.getElementById('swipe-indicator').style.display = 'none';
         document.getElementById('news-panel').classList.remove('visible');
+        updateURL(null, null, null);
 
         const heading = document.createElement('h2');
         heading.className = 'tile-heading';
@@ -822,6 +872,7 @@ const App = (() => {
         }
         nav.appendChild(grid);
 
+        updateURL(sector, null, null);
         setStatus(`${sector} \u2014 ${list.length} industries`);
     }
 
@@ -879,6 +930,34 @@ const App = (() => {
         const sortLabel = SORT_LABELS[sortKey] || 'Market Cap';
         sub.textContent = 'Top ' + top.length + ' stocks by ' + sortLabel;
         nav.appendChild(sub);
+
+        // View toggle (tile / table)
+        const toggleBar = document.createElement('div');
+        toggleBar.className = 'view-toggle-bar';
+        const tileBtn = document.createElement('button');
+        tileBtn.className = 'view-toggle-btn' + (!showTableView ? ' active' : '');
+        tileBtn.textContent = 'Tiles';
+        tileBtn.addEventListener('click', () => { showTableView = false; showStockTiles(stocks, industry); });
+        const tableBtn = document.createElement('button');
+        tableBtn.className = 'view-toggle-btn' + (showTableView ? ' active' : '');
+        tableBtn.textContent = 'Table';
+        tableBtn.addEventListener('click', () => { showTableView = true; showStockTiles(stocks, industry); });
+        toggleBar.appendChild(tileBtn);
+        toggleBar.appendChild(tableBtn);
+        nav.appendChild(toggleBar);
+
+        if (showTableView) {
+            pieOrder = sorted.map(s => s.symbol);
+            renderIndustryTable(sorted, nav);
+
+            if (stocks.length > 20) {
+                const note = document.createElement('div');
+                note.className = 'stock-tile-note';
+                note.textContent = 'Showing all ' + stocks.length + ' stocks. Use sidebar for quick access.';
+                nav.appendChild(note);
+            }
+            return;
+        }
 
         const grid = document.createElement('div');
         grid.className = 'stock-tile-grid';
@@ -1052,6 +1131,127 @@ const App = (() => {
             panel.style.transform = '';
             startY = 0;
         });
+    }
+
+    // ── PERCENTILE BADGES ─────────────────────────
+    function computePercentile(list, symbol, field, lowerIsBetter) {
+        const vals = list
+            .filter(s => s[field] != null && s[field] > 0)
+            .map(s => ({ sym: s.symbol, val: s[field] }));
+        if (vals.length < 3) return null;
+        vals.sort((a, b) => a.val - b.val);
+        const idx = vals.findIndex(v => v.sym === symbol);
+        if (idx === -1) return null;
+        const pctl = Math.round((idx / (vals.length - 1)) * 100);
+        return lowerIsBetter ? pctl : (100 - pctl);
+    }
+
+    function setPercentile(kpiId, pctl) {
+        const card = document.getElementById('kpi-' + kpiId);
+        if (!card) return;
+        let badge = card.querySelector('.kpi-pctl');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'kpi-pctl';
+            card.appendChild(badge);
+        }
+        if (pctl === null) { badge.textContent = ''; return; }
+        badge.textContent = pctl + 'th pctl';
+        if (pctl < 33) badge.style.color = 'var(--neon-green)';
+        else if (pctl < 67) badge.style.color = 'var(--neon-amber)';
+        else badge.style.color = 'var(--neon-red)';
+    }
+
+    // ── URL DEEP-LINKING ────────────────────────
+    function updateURL(sector, industry, symbol) {
+        const params = new URLSearchParams();
+        if (sector) params.set('sector', sector);
+        if (industry) params.set('industry', industry);
+        if (symbol) params.set('symbol', symbol);
+        const url = params.toString() ? '?' + params.toString() : window.location.pathname;
+        history.pushState(null, '', url);
+    }
+
+    // ── INDUSTRY TABLE VIEW ─────────────────────
+    function renderIndustryTable(stocks, container) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'industry-table-wrapper';
+
+        const table = document.createElement('table');
+        table.className = 'industry-table';
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const columns = [
+            { key: 'name', label: 'Name', sortable: false },
+            { key: 'currentPrice', label: 'Price', sortable: true },
+            { key: 'marketCap', label: 'Market Cap', sortable: true },
+            { key: 'trailingPE', label: 'P/E', sortable: true },
+            { key: 'priceToBook', label: 'P/B', sortable: true },
+            { key: 'dividendYield', label: 'Div Yield', sortable: true },
+            { key: 'evToEbitda', label: 'EV/EBITDA', sortable: true },
+        ];
+
+        for (const col of columns) {
+            const th = document.createElement('th');
+            th.textContent = col.label;
+            if (col.sortable) {
+                th.style.cursor = 'pointer';
+                th.addEventListener('click', () => {
+                    const sorted = [...stocks].sort((a, b) => {
+                        const va = a[col.key] || 0;
+                        const vb = b[col.key] || 0;
+                        return col.key === 'dividendYield' ? vb - va : va - vb;
+                    });
+                    wrapper.remove();
+                    renderIndustryTable(sorted, container);
+                });
+            }
+            headerRow.appendChild(th);
+        }
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        for (const s of stocks) {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.addEventListener('click', () => analyzeStock(s.symbol));
+
+            const tdName = document.createElement('td');
+            tdName.className = 'table-name-cell';
+            tdName.textContent = s.name || s.symbol;
+            tr.appendChild(tdName);
+
+            const tdPrice = document.createElement('td');
+            tdPrice.textContent = s.currentPrice ? '\u20b9' + Number(s.currentPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '\u2014';
+            tr.appendChild(tdPrice);
+
+            const tdMcap = document.createElement('td');
+            tdMcap.textContent = fmtInr(s.marketCap);
+            tr.appendChild(tdMcap);
+
+            const tdPE = document.createElement('td');
+            tdPE.textContent = s.trailingPE ? s.trailingPE.toFixed(1) : '\u2014';
+            tr.appendChild(tdPE);
+
+            const tdPB = document.createElement('td');
+            tdPB.textContent = s.priceToBook ? s.priceToBook.toFixed(1) : '\u2014';
+            tr.appendChild(tdPB);
+
+            const tdDY = document.createElement('td');
+            tdDY.textContent = s.dividendYield ? (s.dividendYield * 100).toFixed(2) + '%' : '\u2014';
+            tr.appendChild(tdDY);
+
+            const tdEV = document.createElement('td');
+            tdEV.textContent = s.evToEbitda ? s.evToEbitda.toFixed(1) : '\u2014';
+            tr.appendChild(tdEV);
+
+            tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        wrapper.appendChild(table);
+        container.appendChild(wrapper);
     }
 
     return { init };

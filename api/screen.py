@@ -1,6 +1,7 @@
 """GET /api/screen?type=sector&value=Technology — equity screener."""
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import re
@@ -11,6 +12,11 @@ import yfinance as yf
 # Ensure yfinance cache writes go to /tmp (Vercel filesystem is read-only)
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 from yfinance.screener.query import EquityQuery
+
+try:
+    from yfinance.screener.query import EQUITY_SCREENER_EQ_MAP
+except Exception:
+    EQUITY_SCREENER_EQ_MAP = {}
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +44,7 @@ class handler(BaseHTTPRequestHandler):
 
         try:
             if qtype == "sector":
-                raw_debug = params.get("debug", [""])[0] == "1"
-                stocks = self._screen_sector(value, raw_debug=raw_debug)
+                stocks = self._screen_sector(value)
             else:
                 stocks = self._screen_industry(value)
 
@@ -59,7 +64,7 @@ class handler(BaseHTTPRequestHandler):
     do_PUT = do_POST
     do_DELETE = do_POST
 
-    def _screen_sector(self, sector, raw_debug=False):
+    def _screen_sector(self, sector):
         q = EquityQuery("and", [
             EquityQuery("eq", ["region", "in"]),
             EquityQuery("eq", ["exchange", "NSI"]),
@@ -69,21 +74,64 @@ class handler(BaseHTTPRequestHandler):
         if resp is None:
             return []
         rows = resp.get("quotes", [])
-        if raw_debug and rows:
-            return rows[:1]  # return first raw row for debugging
         return self._normalize_rows(rows)
 
     def _screen_industry(self, industry):
+        """Screen by industry: find parent sector, screen by sector, then
+        batch-lookup industry for top stocks and filter."""
+        # Find which sector owns this industry
+        raw = EQUITY_SCREENER_EQ_MAP.get("industry", {})
+        sector = None
+        for s, ind_list in raw.items():
+            if industry in ind_list:
+                sector = s
+                break
+        if not sector:
+            return []
+
+        # Screen by sector (this always works)
         q = EquityQuery("and", [
             EquityQuery("eq", ["region", "in"]),
             EquityQuery("eq", ["exchange", "NSI"]),
-            EquityQuery("eq", ["industry", industry]),
+            EquityQuery("eq", ["sector", sector]),
         ])
-        resp = yf.screen(q, size=100)
+        resp = yf.screen(q, size=250)
         if resp is None:
             return []
         rows = resp.get("quotes", [])
-        return self._normalize_rows(rows)
+        if not rows:
+            return []
+
+        # Sort by marketCap desc, take top 60 for industry lookup
+        rows.sort(key=lambda r: r.get("marketCap") or 0, reverse=True)
+        candidates = rows[:60]
+
+        # Batch-fetch industry via yf.Ticker().info (each Ticker creates own session)
+        def _get_industry(sym):
+            try:
+                tk = yf.Ticker(sym)
+                return sym, tk.info.get("industry", "")
+            except Exception:
+                return sym, ""
+
+        symbols = [r.get("symbol", "") for r in candidates if r.get("symbol")]
+        industry_map = {}
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            futures = {pool.submit(_get_industry, sym): sym for sym in symbols}
+            for f in as_completed(futures, timeout=8):
+                try:
+                    sym, ind = f.result(timeout=1)
+                    industry_map[sym] = ind
+                except Exception:
+                    pass
+
+        # Filter to matching industry and normalize
+        matched = [r for r in candidates if industry_map.get(r.get("symbol", "")) == industry]
+        result = self._normalize_rows(matched)
+        # Enrich with industry name (screener doesn't return it)
+        for s in result:
+            s["industry"] = industry
+        return result
 
     def _normalize_rows(self, rows):
         """Return consistent fields for both sector and industry results."""
@@ -100,6 +148,8 @@ class handler(BaseHTTPRequestHandler):
                 "priceToBook": r.get("priceToBook", None),
                 "dividendYield": r.get("dividendYield", None),
                 "evToEbitda": r.get("enterpriseToEbitda", None),
+                "priceChange": r.get("regularMarketChange", None),
+                "priceChangePercent": r.get("regularMarketChangePercent", None),
             })
         return stocks
 

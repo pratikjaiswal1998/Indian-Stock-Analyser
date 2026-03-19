@@ -43,24 +43,45 @@
     </div>
 </section>
 
-<!-- ── STATS BAR ──────────────────────────────── -->
+<!-- ── LIVE STATS BAR ─────────────────────────── -->
 <section class="lp-stats">
     <div class="lp-stats-inner">
         <div class="lp-stat-card">
-            <span class="lp-stat-value">11+</span>
+            <span class="lp-stat-value lp-skeleton" id="lp-stat-mcap">&nbsp;</span>
+            <span class="lp-stat-label">Total Market Cap</span>
+        </div>
+        <div class="lp-stat-card">
+            <span class="lp-stat-value lp-skeleton" id="lp-stat-stocks">&nbsp;</span>
+            <span class="lp-stat-label">Stocks Screened</span>
+        </div>
+        <div class="lp-stat-card">
+            <span class="lp-stat-value lp-skeleton" id="lp-stat-pe">&nbsp;</span>
+            <span class="lp-stat-label">Avg P/E</span>
+        </div>
+        <div class="lp-stat-card">
+            <span class="lp-stat-value lp-skeleton" id="lp-stat-sectors">&nbsp;</span>
             <span class="lp-stat-label">Sectors</span>
         </div>
-        <div class="lp-stat-card">
-            <span class="lp-stat-value">70+</span>
-            <span class="lp-stat-label">Industries</span>
+    </div>
+</section>
+
+<!-- ── SECTOR HEATMAP ────────────────────────── -->
+<section class="lp-heatmap">
+    <h2 class="lp-section-heading">Market Pulse</h2>
+    <div class="lp-heatmap-grid" id="lp-heatmap-grid"></div>
+</section>
+
+<!-- ── TOP MOVERS ────────────────────────────── -->
+<section class="lp-movers">
+    <h2 class="lp-section-heading">Today's Market Movers</h2>
+    <div class="lp-movers-grid">
+        <div class="lp-movers-col">
+            <h3 class="lp-movers-title lp-change-up">Top Gainers</h3>
+            <div id="lp-gainers-list" class="lp-movers-list"></div>
         </div>
-        <div class="lp-stat-card">
-            <span class="lp-stat-value">6</span>
-            <span class="lp-stat-label">Sort Modes</span>
-        </div>
-        <div class="lp-stat-card">
-            <span class="lp-stat-value">Live</span>
-            <span class="lp-stat-label">Data Source</span>
+        <div class="lp-movers-col">
+            <h3 class="lp-movers-title lp-change-down">Top Losers</h3>
+            <div id="lp-losers-list" class="lp-movers-list"></div>
         </div>
     </div>
 </section>
@@ -142,6 +163,6 @@
 </footer>
 
 <script src="js/theme.js"></script>
-<script>document.addEventListener('DOMContentLoaded', () => Theme.init());</script>
+<script src="js/landing.js"></script>
 </body>
 </html>

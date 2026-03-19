@@ -291,7 +291,7 @@ body.light .primary-btn { color: #ffffff; }
 /* ── KPI CARDS ───────────────────────────────── */
 #kpi-row {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(9, 1fr);
     gap: 8px;
 }
 
@@ -1170,6 +1170,114 @@ button, select, .stock-item, .news-item, .theme-toggle {
     }
 }
 
+/* ── KPI PERCENTILE BADGE ────────────────────── */
+.kpi-pctl {
+    display: block;
+    font-size: 9px;
+    font-family: 'Consolas', monospace;
+    margin-top: 2px;
+    letter-spacing: 0.3px;
+}
+
+/* ── VIEW TOGGLE ─────────────────────────────── */
+.view-toggle-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+.view-toggle-btn {
+    background: var(--deep-bg);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: 'Consolas', monospace;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.view-toggle-btn:hover { color: var(--neon-cyan); border-color: var(--neon-cyan); }
+.view-toggle-btn.active {
+    background: var(--card-bg);
+    color: var(--neon-cyan);
+    border-color: var(--neon-cyan);
+    font-weight: 700;
+}
+
+/* ── INDUSTRY TABLE ──────────────────────────── */
+.industry-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+.industry-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.industry-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.industry-table th {
+    background: var(--panel-bg);
+    color: var(--text-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+}
+.industry-table th:hover { color: var(--neon-cyan); }
+.industry-table td {
+    padding: 10px 12px;
+    color: var(--text-bright);
+    font-family: 'Consolas', monospace;
+    border-bottom: 1px solid var(--border);
+}
+.industry-table tbody tr { cursor: pointer; transition: background 0.1s; }
+.industry-table tbody tr:hover {
+    background: rgba(0, 240, 255, 0.04);
+}
+.industry-table tbody tr:nth-child(even) {
+    background: var(--card-bg);
+}
+.industry-table tbody tr:nth-child(even):hover {
+    background: rgba(0, 240, 255, 0.06);
+}
+.table-name-cell {
+    font-family: 'Segoe UI', system-ui, sans-serif !important;
+    font-weight: 500;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 900px) {
+    .industry-table-wrapper {
+        margin: 0 -8px;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+    .table-name-cell {
+        position: sticky;
+        left: 0;
+        background: var(--panel-bg);
+        z-index: 1;
+        min-width: 120px;
+    }
+    .industry-table tbody tr:nth-child(even) .table-name-cell {
+        background: var(--card-bg);
+    }
+}
+
 /* ══════════════════════════════════════════════════
    LANDING PAGE STYLES (lp- prefix)
    ══════════════════════════════════════════════════ */
@@ -1576,6 +1684,181 @@ body.light .lp-step-num {
     font-weight: 600;
 }
 
+/* ── SKELETON SHIMMER ────────────────────────── */
+@keyframes lp-shimmer {
+    0% { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
+.lp-skeleton {
+    background: linear-gradient(90deg, var(--card-bg) 0%, var(--border) 50%, var(--card-bg) 100%);
+    background-size: 200px 100%;
+    animation: lp-shimmer 1.5s infinite;
+    border-radius: 4px;
+    min-width: 60px;
+    min-height: 28px;
+    display: inline-block;
+}
+
+/* ── SECTOR HEATMAP ─────────────────────────── */
+.lp-heatmap {
+    padding: 60px 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.lp-heatmap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.lp-heatmap-cell {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 16px;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.lp-heatmap-cell:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 240, 255, 0.08);
+}
+body.light .lp-heatmap-cell:hover {
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.1);
+}
+
+.lp-heatmap-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-bright);
+}
+
+.lp-heatmap-mcap {
+    font-size: 13px;
+    font-family: 'Consolas', monospace;
+    color: var(--neon-cyan);
+}
+
+.lp-heatmap-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'Consolas', monospace;
+}
+
+.lp-heatmap-change {
+    font-size: 12px;
+    font-weight: 700;
+    font-family: 'Consolas', monospace;
+    margin-top: 4px;
+}
+
+/* ── CHANGE COLORS ──────────────────────────── */
+.lp-change-up { color: var(--neon-green); }
+.lp-change-down { color: var(--neon-red); }
+
+/* ── TOP MOVERS ─────────────────────────────── */
+.lp-movers {
+    padding: 60px 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.lp-movers-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+.lp-movers-col {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+}
+
+.lp-movers-title {
+    font-size: 14px;
+    font-weight: 700;
+    font-family: 'Consolas', monospace;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.lp-movers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lp-mover-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all 0.15s;
+    cursor: pointer;
+}
+.lp-mover-row:hover {
+    border-color: var(--neon-cyan);
+}
+
+.lp-mover-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.lp-mover-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-bright);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lp-mover-sector {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.lp-mover-right {
+    text-align: right;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.lp-mover-price {
+    font-size: 13px;
+    font-family: 'Consolas', monospace;
+    color: var(--text-bright);
+}
+
+.lp-mover-change {
+    font-size: 12px;
+    font-weight: 700;
+    font-family: 'Consolas', monospace;
+}
+
+.lp-mover-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
 /* ── LANDING PAGE MOBILE: 900px ──────────────── */
 @media (max-width: 900px) {
     /* Override app body overflow for landing page */
@@ -1684,6 +1967,25 @@ body.light .lp-step-num {
     .lp-cta {
         padding: 60px 20px;
     }
+
+    .lp-heatmap {
+        padding: 48px 16px;
+    }
+    .lp-heatmap-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 8px;
+    }
+    .lp-heatmap-cell {
+        padding: 14px 12px;
+    }
+
+    .lp-movers {
+        padding: 48px 16px;
+    }
+    .lp-movers-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
 }
 
 /* ── LANDING PAGE MOBILE: 500px ──────────────── */
@@ -1747,4 +2049,19 @@ body.light .lp-step-num {
     .lp-footer {
         padding: 32px 16px;
     }
+
+    .lp-heatmap-grid {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+    .lp-heatmap-cell {
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+    }
+    .lp-heatmap-name { flex: 1; }
+    .lp-heatmap-mcap { font-size: 12px; }
+    .lp-heatmap-meta { display: none; }
+    .lp-heatmap-change { margin-top: 0; font-size: 11px; }
 }
