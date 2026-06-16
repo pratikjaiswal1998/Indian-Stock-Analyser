@@ -9,8 +9,9 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Runtime cache
+# Runtime cache / local DB
 industries_cache.json
+ruvector.db
 
 # IDE / Editor
 .vscode/
@@ -18,9 +19,14 @@ industries_cache.json
 *.swp
 *.swo
 
-# Claude
+# Claude / swarm tooling
 .claude/
+.claude-flow/
+.swarm/
 
 # OS
 Thumbs.db
 .DS_Store
+
+# Scratch / local reference files
+IMG_4317.PNG
