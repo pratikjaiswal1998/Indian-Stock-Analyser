@@ -36,9 +36,9 @@ const Theme = (() => {
         return {
             paper_bgcolor: isDark ? '#0a0e1a' : '#f0f6ff',
             plot_bgcolor: isDark ? '#111827' : '#ffffff',
-            font: { color: isDark ? '#e2e8f0' : '#1a365d', family: 'Consolas, monospace' },
+            font: { color: isDark ? '#e2e8f0' : '#1a365d', family: "'JetBrains Mono', Consolas, monospace" },
             gridcolor: isDark ? 'rgba(71,85,105,0.3)' : 'rgba(37,99,235,0.12)',
-            accent: isDark ? '#00f0ff' : '#2563eb',
+            accent: isDark ? '#22d3ee' : '#2563eb',
         };
     }
 

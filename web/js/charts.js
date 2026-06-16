@@ -2,7 +2,7 @@
 const Charts = (() => {
     // Fix #30: extended COLORS array to 16 entries (pie shows up to 15 items)
     const COLORS = [
-        '#00f0ff', '#00ff88', '#ffaa00', '#ff006e', '#a78bfa',
+        '#22d3ee', '#00ff88', '#ffaa00', '#ff006e', '#a78bfa',
         '#38bdf8', '#fb923c', '#e879f9', '#22d3ee', '#facc15',
         '#f472b6', '#34d399', '#818cf8', '#f97316', '#06b6d4',
         '#ec4899',

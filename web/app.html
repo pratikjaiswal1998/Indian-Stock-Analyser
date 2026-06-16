@@ -10,6 +10,9 @@
     <title>Indian Stock Analyser — NSE Screener</title>
     <link rel="preconnect" href="https://cdn.plot.ly" crossorigin>
     <link rel="dns-prefetch" href="https://cdn.plot.ly">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.plot.ly/plotly-2.35.0.min.js" defer></script>
 </head>
@@ -76,17 +79,28 @@
         </div>
         <!-- NEWS TOGGLE (mobile only) -->
         <button id="news-toggle-btn" class="news-toggle-btn" style="display:none;">News <span id="news-toggle-count"></span></button>
-        <!-- KPI CARDS -->
+        <!-- KPI CARDS: verdict scorecard + supporting metric strip -->
         <div id="kpi-row">
-            <div class="kpi-card" id="kpi-industry"><div class="kpi-label">Industry</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-ind-size"><div class="kpi-label">Industry Size</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-mcap"><div class="kpi-label">Market Cap</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-price"><div class="kpi-label">Price</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-pe"><div class="kpi-label">P/E</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-signal"><div class="kpi-label">Signal</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-pb"><div class="kpi-label">P/B</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-dy"><div class="kpi-label">Div Yield</div><div class="kpi-value">—</div></div>
-            <div class="kpi-card" id="kpi-ev"><div class="kpi-label">EV/EBITDA</div><div class="kpi-value">—</div></div>
+            <div class="kpi-verdict">
+                <div class="kpi-card kpi-signal-card" id="kpi-signal">
+                    <div class="kpi-label">Valuation Signal</div>
+                    <div class="kpi-value">&mdash;</div>
+                    <div class="kpi-sub" id="kpi-signal-sub"></div>
+                </div>
+                <div class="kpi-card kpi-price-card" id="kpi-price">
+                    <div class="kpi-label">Price</div>
+                    <div class="kpi-value">&mdash;</div>
+                </div>
+            </div>
+            <div class="kpi-metrics">
+                <div class="kpi-card" id="kpi-industry"><div class="kpi-label">Industry</div><div class="kpi-value">&mdash;</div></div>
+                <div class="kpi-card" id="kpi-ind-size"><div class="kpi-label">Industry Size</div><div class="kpi-value">&mdash;</div></div>
+                <div class="kpi-card" id="kpi-mcap"><div class="kpi-label">Market Cap</div><div class="kpi-value">&mdash;</div></div>
+                <div class="kpi-card" id="kpi-pe"><div class="kpi-label">P/E</div><div class="kpi-value">&mdash;</div></div>
+                <div class="kpi-card" id="kpi-pb"><div class="kpi-label">P/B</div><div class="kpi-value">&mdash;</div></div>
+                <div class="kpi-card" id="kpi-dy"><div class="kpi-label">Div Yield</div><div class="kpi-value">&mdash;</div></div>
+                <div class="kpi-card" id="kpi-ev"><div class="kpi-label">EV/EBITDA</div><div class="kpi-value">&mdash;</div></div>
+            </div>
         </div>
 
         <!-- CHART AREA -->

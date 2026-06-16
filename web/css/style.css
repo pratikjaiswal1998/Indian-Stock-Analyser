@@ -1,17 +1,21 @@
 /* ── THEME VARIABLES ──────────────────────────── */
 :root {
-    --neon-cyan: #00f0ff;
+    /* Type system */
+    --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', ui-monospace, monospace;
+
+    --neon-cyan: #22d3ee;
     --neon-green: #00ff88;
     --neon-pink: #ff006e;
     --neon-amber: #ffaa00;
     --neon-red: #ff3366;
-    --glow-cyan: #00f0ff;
+    --glow-cyan: #22d3ee;
 }
 
 body.dark {
     --deep-bg: #0a0e1a;
     --panel-bg: #111827;
-    --card-bg: #1a1f3a;
+    --card-bg: #161b2c;
     --border: #1e293b;
     --text-bright: #e2e8f0;
     --text-dim: #64748b;
@@ -44,7 +48,8 @@ body.light {
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
     background: var(--deep-bg);
     color: var(--text-bright);
     overflow: hidden;
@@ -96,7 +101,7 @@ body {
 }
 
 #header h1 {
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     font-size: 16px;
     color: var(--neon-cyan);
     font-weight: 700;
@@ -267,7 +272,7 @@ body.light .primary-btn { color: #ffffff; }
 .stock-item .mcap {
     font-size: 10px;
     color: var(--text-dim);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
 }
 
 .status-bar {
@@ -289,9 +294,27 @@ body.light .primary-btn { color: #ffffff; }
 }
 
 /* ── KPI CARDS ───────────────────────────────── */
+/* Two regions: a verdict scorecard (hero) + a quiet strip of supporting metrics */
 #kpi-row {
     display: grid;
-    grid-template-columns: repeat(9, 1fr);
+    grid-template-columns: minmax(280px, 330px) 1fr;
+    gap: 10px;
+    align-items: stretch;
+}
+
+/* Verdict: the valuation signal (hero) paired with price */
+.kpi-verdict {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 8px;
+}
+
+/* Supporting metrics: a quiet strip, not nine equal headline cards.
+   min 150px keeps values like "Pharmaceuticals" / "₹89,200 Cr" readable —
+   they wrap to a balanced 4+3 rather than cramming into one thin row. */
+.kpi-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 8px;
 }
 
@@ -305,6 +328,11 @@ body.light .primary-btn { color: #ffffff; }
 }
 .kpi-card.active { border-color: var(--neon-cyan); }
 
+/* Only the verdict carries colour-with-meaning. Keep the strip and price quiet
+   so the eye lands on the signal, not nine cards lighting up cyan at once. */
+.kpi-metrics .kpi-card.active,
+.kpi-price-card.active { border-color: var(--border); }
+
 .kpi-label {
     font-size: 10px;
     color: var(--text-dim);
@@ -315,12 +343,39 @@ body.light .primary-btn { color: #ffffff; }
     font-size: 14px;
     color: var(--text-bright);
     font-weight: 700;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Verdict cards read as the hero: left-aligned, larger, vertically centred */
+.kpi-signal-card,
+.kpi-price-card {
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.kpi-signal-card { border-left-width: 3px; }
+.kpi-signal-card .kpi-value {
+    font-size: 20px;
+    white-space: normal;
+}
+.kpi-price-card .kpi-value { font-size: 18px; }
+
+/* The revenue-vs-price gap that drives the verdict, stated plainly */
+.kpi-sub {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.kpi-sub:empty { display: none; }
 
 /* ── CHART AREA ──────────────────────────────── */
 #chart-area {
@@ -361,7 +416,7 @@ body.light .primary-btn { color: #ffffff; }
 .tl-label {
     font-size: 11px;
     color: var(--text-dim);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     margin-right: 4px;
 }
 
@@ -372,7 +427,7 @@ body.light .primary-btn { color: #ffffff; }
     padding: 3px 10px;
     border-radius: 4px;
     font-size: 11px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     cursor: pointer;
     transition: all 0.15s;
 }
@@ -408,7 +463,7 @@ body.light .primary-btn { color: #ffffff; }
 .swipe-label {
     font-size: 12px;
     color: var(--text-dim);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -461,7 +516,7 @@ body.light .primary-btn { color: #ffffff; }
 .news-header h3 {
     font-size: 13px;
     color: var(--neon-cyan);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
 }
 
 .news-list {
@@ -605,7 +660,7 @@ body.light #loading-text {
 #loading-text {
     color: var(--text-dim);
     font-size: 13px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
 }
 
 /* ── INITIAL STATE (pie-only view) ───────────── */
@@ -704,7 +759,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
     padding: 8px 18px;
     font-size: 13px;
     font-weight: 600;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     cursor: pointer;
     align-self: center;
     min-height: 44px;
@@ -826,11 +881,12 @@ button, select, .stock-item, .news-item, .theme-toggle {
         gap: 8px;
     }
 
-    /* 2x3 KPI grid on mobile */
+    /* Stack the verdict over the metric strip on tablet/mobile */
     #kpi-row {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 6px;
+        grid-template-columns: 1fr;
+        gap: 8px;
     }
+    .kpi-metrics { grid-template-columns: repeat(3, 1fr); }
     .kpi-label { font-size: 12px; }
     .kpi-value {
         white-space: normal;
@@ -933,12 +989,12 @@ button, select, .stock-item, .news-item, .theme-toggle {
 }
 
 @media (max-width: 500px) {
-    #kpi-row {
-        grid-template-columns: repeat(3, 1fr);
-    }
+    .kpi-metrics { grid-template-columns: repeat(2, 1fr); }
 
-    .kpi-value { font-size: 12px; }
+    .kpi-metrics .kpi-value { font-size: 12px; }
     .kpi-card { padding: 6px 8px; }
+    .kpi-signal-card .kpi-value { font-size: 17px; }
+    .kpi-price-card .kpi-value { font-size: 16px; }
 
     .chart-box { min-height: 220px; }
     #chart-candle { min-height: 260px; }
@@ -975,7 +1031,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
     font-size: 22px;
     font-weight: 700;
     color: var(--neon-cyan);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     margin-bottom: 4px;
 }
 
@@ -1031,7 +1087,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
 .tile-meta {
     font-size: 11px;
     color: var(--text-dim);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
 }
 
 .tile-sm {
@@ -1110,13 +1166,13 @@ button, select, .stock-item, .news-item, .theme-toggle {
 
 .stock-tile-mcap {
     font-size: 12px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     color: var(--neon-cyan);
 }
 
 .stock-tile-price {
     font-size: 12px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     color: var(--text-bright);
 }
 
@@ -1139,7 +1195,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
 .stock-tile-share {
     font-size: 10px;
     color: var(--text-dim);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
 }
 
 .stock-tile-note {
@@ -1174,7 +1230,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
 .kpi-pctl {
     display: block;
     font-size: 9px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     margin-top: 2px;
     letter-spacing: 0.3px;
 }
@@ -1192,7 +1248,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
     padding: 6px 16px;
     border-radius: 6px;
     font-size: 12px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     cursor: pointer;
     transition: all 0.15s;
 }
@@ -1238,7 +1294,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
 .industry-table td {
     padding: 10px 12px;
     color: var(--text-bright);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     border-bottom: 1px solid var(--border);
 }
 .industry-table tbody tr { cursor: pointer; transition: background 0.1s; }
@@ -1252,7 +1308,7 @@ button, select, .stock-item, .news-item, .theme-toggle {
     background: rgba(0, 240, 255, 0.06);
 }
 .table-name-cell {
-    font-family: 'Segoe UI', system-ui, sans-serif !important;
+    font-family: var(--font-sans) !important;
     font-weight: 500;
     max-width: 200px;
     overflow: hidden;
@@ -1324,7 +1380,7 @@ body:has(.lp-nav) {
 }
 
 .lp-nav-brand {
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     font-size: 17px;
     font-weight: 700;
     color: var(--neon-cyan);
@@ -1380,7 +1436,7 @@ body.light .lp-hero {
     text-transform: uppercase;
     letter-spacing: 3px;
     margin-bottom: 20px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
 }
 
 .lp-hero-headline {
@@ -1486,7 +1542,7 @@ body.light .lp-btn-outline:hover {
     font-size: 28px;
     font-weight: 800;
     color: var(--neon-cyan);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     line-height: 1;
     margin-bottom: 6px;
 }
@@ -1611,7 +1667,7 @@ body.light .lp-feature-icon {
     height: 52px;
     font-size: 18px;
     font-weight: 800;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     color: var(--neon-cyan);
     border: 2px solid var(--neon-cyan);
     border-radius: 50%;
@@ -1740,20 +1796,20 @@ body.light .lp-heatmap-cell:hover {
 
 .lp-heatmap-mcap {
     font-size: 13px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     color: var(--neon-cyan);
 }
 
 .lp-heatmap-meta {
     font-size: 11px;
     color: var(--text-dim);
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
 }
 
 .lp-heatmap-change {
     font-size: 12px;
     font-weight: 700;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     margin-top: 4px;
 }
 
@@ -1784,7 +1840,7 @@ body.light .lp-heatmap-cell:hover {
 .lp-movers-title {
     font-size: 14px;
     font-weight: 700;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     margin-bottom: 12px;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -1842,14 +1898,14 @@ body.light .lp-heatmap-cell:hover {
 
 .lp-mover-price {
     font-size: 13px;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
     color: var(--text-bright);
 }
 
 .lp-mover-change {
     font-size: 12px;
     font-weight: 700;
-    font-family: 'Consolas', monospace;
+    font-family: var(--font-mono);
 }
 
 .lp-mover-empty {

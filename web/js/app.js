@@ -548,7 +548,15 @@ const App = (() => {
 
         if (divResult?.signal) {
             setKPI('signal', divResult.signal.text);
-            document.querySelector('#kpi-signal .kpi-value').style.color = divResult.signal.color;
+            const sigCard = document.getElementById('kpi-signal');
+            sigCard.querySelector('.kpi-value').style.color = divResult.signal.color;
+            sigCard.style.borderColor = divResult.signal.color;
+            // State plainly the gap that drives the verdict: revenue growth vs price move.
+            const sub = document.getElementById('kpi-signal-sub');
+            if (sub && Number.isFinite(divResult.revChange) && Number.isFinite(divResult.priceChange)) {
+                const pct = (n) => `${n >= 0 ? '+' : ''}${Math.round(n)}%`;
+                sub.textContent = `Rev ${pct(divResult.revChange)} vs Price ${pct(divResult.priceChange)}`;
+            }
         }
 
         Charts.renderCandlestick('chart-candle', {
@@ -732,6 +740,12 @@ const App = (() => {
         const card = document.getElementById(`kpi-${id}`);
         if (card && value !== '\u2014') card.classList.add('active');
         else if (card) card.classList.remove('active');
+        // Verdict tint + sub-line are reapplied by renderAllCharts; clear them on every (re)set.
+        if (id === 'signal' && card) {
+            card.style.borderColor = '';
+            const sub = document.getElementById('kpi-signal-sub');
+            if (sub) sub.textContent = '';
+        }
     }
 
     // Fix #25: fmtInr handles small values (Lakh tier) and negatives
